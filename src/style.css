@@ -1,0 +1,26 @@
+:root {
+  font-family: 'Courier New', monospace;
+  color: #f9f2d7;
+  background: #152b47;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  overflow: hidden;
+  image-rendering: pixelated;
+}
+
+canvas {
+  image-rendering: pixelated;
+}
