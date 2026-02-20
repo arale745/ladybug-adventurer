@@ -109,6 +109,7 @@ class AdventureScene extends Phaser.Scene {
     key: TouchActionKey
     circle: Phaser.GameObjects.Arc
     text: Phaser.GameObjects.Text
+    hitZone: Phaser.GameObjects.Zone
   }> = []
   private mobileControlsEnabled = false
 
@@ -448,8 +449,10 @@ class AdventureScene extends Phaser.Scene {
     const makeActionButton = (label: string, color: number, key: TouchActionKey) => {
       const circle = this.trackUi(this.add.circle(0, 0, 24, color, 0.7).setDepth(140))
       circle.setStrokeStyle(2, 0xe7f1ff, 0.75)
-      circle.setInteractive(new Phaser.Geom.Circle(0, 0, 24), Phaser.Geom.Circle.Contains)
-      circle.on('pointerdown', () => {
+
+      const hitZone = this.trackUi(this.add.zone(0, 0, 56, 56).setDepth(142))
+      hitZone.setInteractive()
+      hitZone.on('pointerdown', () => {
         this.queuedTouchActions[key] = true
       })
 
@@ -457,9 +460,9 @@ class AdventureScene extends Phaser.Scene {
         fontFamily: 'monospace',
         fontSize: '12px',
         color: '#ffffff',
-      }).setOrigin(0.5).setDepth(141))
+      }).setOrigin(0.5).setDepth(143))
 
-      this.touchButtons.push({ key, circle, text })
+      this.touchButtons.push({ key, circle, text, hitZone })
     }
 
     makeActionButton('SAIL', 0x397aab, 'travel')
@@ -644,7 +647,8 @@ class AdventureScene extends Phaser.Scene {
       const y = startY + i * gap
       btn.circle.setRadius(buttonRadius)
       btn.circle.setPosition(rightX, y)
-      btn.circle.setInteractive(new Phaser.Geom.Circle(0, 0, buttonRadius), Phaser.Geom.Circle.Contains)
+      btn.hitZone.setPosition(rightX, y)
+      btn.hitZone.setSize(buttonRadius * 2.4, buttonRadius * 2.4)
       btn.text.setPosition(rightX, y)
       btn.text.setFontSize(`${pxToWorld(portrait ? 16 : 13)}px`)
     })
