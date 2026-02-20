@@ -29,6 +29,21 @@ type Recipe = {
   cost: Partial<Record<ResourceType, number>>
 }
 
+type NpcDefinition = {
+  name: string
+  tx: number
+  ty: number
+}
+
+type SaveData = {
+  islandIndex: number
+  inventory: Record<ResourceType, number>
+  crafted: Record<CraftKey, number>
+  selectedRecipe: number
+  quest: { lanternRequested: boolean; lanternDelivered: boolean }
+  cameraZoom?: number
+}
+
 type TouchActionKey = 'interact' | 'craft' | 'travel'
 
 const TILE = 32
@@ -60,9 +75,13 @@ class AdventureScene extends Phaser.Scene {
 
   private readonly inventory: Record<ResourceType, number> = { wood: 0, stone: 0, fiber: 0 }
   private readonly crafted: Record<CraftKey, number> = { raftKit: 0, bugLantern: 0 }
+  private quest = { lanternRequested: false, lanternDelivered: false }
+  private readonly saveKey = 'ladybug-adventurer-save-v1'
 
   private dock!: Phaser.GameObjects.Rectangle
   private craftBench!: Phaser.GameObjects.Rectangle
+  private npcSprite?: Phaser.Physics.Arcade.Sprite
+  private npcLabel?: Phaser.GameObjects.Text
 
   private hudPanel!: Phaser.GameObjects.Rectangle
   private islandLabel!: Phaser.GameObjects.Text
@@ -102,6 +121,12 @@ class AdventureScene extends Phaser.Scene {
   private readonly recipes: Recipe[] = [
     { key: 'raftKit', label: 'Raft Kit', cost: { wood: 2, fiber: 2 } },
     { key: 'bugLantern', label: 'Bug Lantern', cost: { wood: 1, stone: 2 } },
+  ]
+
+  private readonly npcByIsland: NpcDefinition[] = [
+    { name: 'Mira', tx: 4, ty: 5 },
+    { name: 'Tomo', tx: 15, ty: 5 },
+    { name: 'Nori', tx: 10, ty: 9 },
   ]
 
   private readonly islands: Island[] = [
@@ -181,29 +206,45 @@ class AdventureScene extends Phaser.Scene {
       this.layoutMobileControls()
     })
 
-    this.loadIsland(0)
+    this.loadSave()
+    this.loadIsland(this.islandIndex)
     this.setupCameras()
-    this.setStatus('Explore, gather (E), craft (C), sail (SPACE).')
+
+    this.time.addEvent({
+      delay: 15000,
+      loop: true,
+      callback: () => this.saveNow(),
+    })
+    this.events.on(Phaser.Scenes.Events.SHUTDOWN, () => this.saveNow())
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', () => this.saveNow())
+    }
+
+    this.setStatus('Explore, gather (E), craft (C), sail (SPACE). Auto-save enabled.')
   }
 
   update() {
     this.movePlayer()
 
-    if (Phaser.Input.Keyboard.JustDown(this.interactKey) || this.consumeTouchAction('interact')) this.harvestNearbyNode()
+    if (Phaser.Input.Keyboard.JustDown(this.interactKey) || this.consumeTouchAction('interact')) this.handleInteract()
 
     if ((Phaser.Input.Keyboard.JustDown(this.travelKey) || this.consumeTouchAction('travel')) && this.isNear(this.dock, 34)) {
       const next = (this.islandIndex + 1) % this.islands.length
       this.loadIsland(next)
       this.setStatus(`Sailed to ${this.islands[next].name}.`)
+      this.saveNow()
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.nextRecipeKey)) {
       this.selectedRecipe = (this.selectedRecipe + 1) % this.recipes.length
       this.updateHud()
+      this.saveNow()
     }
     if (Phaser.Input.Keyboard.JustDown(this.prevRecipeKey)) {
       this.selectedRecipe = (this.selectedRecipe - 1 + this.recipes.length) % this.recipes.length
       this.updateHud()
+      this.saveNow()
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.craftKey) || this.consumeTouchAction('craft')) this.tryCraftSelectedRecipe()
@@ -242,6 +283,18 @@ class AdventureScene extends Phaser.Scene {
     g.fillStyle(0x79b34d)
     g.fillRect(0, 0, 10, 10)
     g.generateTexture('fiber', 10, 10)
+
+    g.clear()
+    g.fillStyle(0x4a2f1f)
+    g.fillRect(3, 0, 6, 4)
+    g.fillStyle(0xd9a47b)
+    g.fillRect(2, 3, 8, 6)
+    g.fillStyle(0x6a4bb8)
+    g.fillRect(1, 8, 10, 8)
+    g.fillStyle(0x111111)
+    g.fillRect(4, 5, 1, 1)
+    g.fillRect(7, 5, 1, 1)
+    g.generateTexture('npc', 12, 16)
 
     const drawLadybug = (key: string, lines: string[]) => {
       const colors: Record<string, number> = {
@@ -452,6 +505,7 @@ class AdventureScene extends Phaser.Scene {
 
   private updatePinchZoom() {
     if (this.activeTouches.size < 2) {
+      if (this.pinchActive) this.saveNow()
       this.pinchActive = false
       return
     }
@@ -608,6 +662,11 @@ class AdventureScene extends Phaser.Scene {
     for (const node of this.nodes) node.sprite.destroy()
     this.nodes = []
 
+    this.npcSprite?.destroy()
+    this.npcLabel?.destroy()
+    this.npcSprite = undefined
+    this.npcLabel = undefined
+
     for (const res of island.resources) {
       const x = res.tx * TILE + HALF_TILE
       const y = WORLD_OFFSET_Y + res.ty * TILE + HALF_TILE
@@ -616,6 +675,24 @@ class AdventureScene extends Phaser.Scene {
       sprite.setImmovable(true)
       sprite.body?.setAllowGravity(false)
       this.nodes.push({ type: res.type, sprite, harvested: false })
+    }
+
+    const npc = this.npcByIsland[index]
+    if (npc) {
+      const npcX = npc.tx * TILE + HALF_TILE
+      const npcY = WORLD_OFFSET_Y + npc.ty * TILE + HALF_TILE
+      this.npcSprite = this.trackWorld(this.physics.add.sprite(npcX, npcY, 'npc').setDepth(28))
+      this.npcSprite.setScale(2)
+      this.npcSprite.setImmovable(true)
+      const body = this.npcSprite.body
+      if (body && 'setAllowGravity' in body) body.setAllowGravity(false)
+      this.npcLabel = this.trackWorld(this.add.text(npcX - 20, npcY - 26, npc.name, {
+        fontFamily: 'monospace',
+        fontSize: '10px',
+        color: '#fff5d6',
+        backgroundColor: '#1b2d44',
+        padding: { left: 2, right: 2, top: 1, bottom: 1 },
+      }).setDepth(29))
     }
 
     this.player.setPosition(10 * TILE + HALF_TILE, WORLD_OFFSET_Y + 6 * TILE + HALF_TILE)
@@ -700,6 +777,50 @@ class AdventureScene extends Phaser.Scene {
     }
   }
 
+  private handleInteract() {
+    if (this.tryNpcInteraction()) return
+    this.harvestNearbyNode()
+  }
+
+  private tryNpcInteraction() {
+    if (!this.npcSprite || !this.npcLabel) return false
+
+    const closeEnough = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.npcSprite.x, this.npcSprite.y) < 34
+    if (!closeEnough) return false
+
+    const npcName = this.npcByIsland[this.islandIndex]?.name ?? 'Scout'
+
+    if (!this.quest.lanternRequested) {
+      this.quest.lanternRequested = true
+      this.setStatus(`${npcName}: Can you craft a Bug Lantern? Bring it back to me.`)
+      this.saveNow()
+      return true
+    }
+
+    if (!this.quest.lanternDelivered) {
+      if (this.crafted.bugLantern > 0) {
+        this.crafted.bugLantern -= 1
+        this.inventory.fiber += 2
+        this.quest.lanternDelivered = true
+        this.setStatus(`${npcName}: Amazing! Reward: +2 fiber. Quest complete.`)
+        this.updateHud()
+        this.saveNow()
+        return true
+      }
+
+      this.setStatus(`${npcName}: I still need a Bug Lantern.`)
+      return true
+    }
+
+    const chatter = [
+      `${npcName}: Islands feel safer with your lantern around.`,
+      `${npcName}: Check other islands for rare materials.`,
+      `${npcName}: Your raft kit collection is impressive.`,
+    ]
+    this.setStatus(Phaser.Utils.Array.GetRandom(chatter))
+    return true
+  }
+
   private harvestNearbyNode() {
     const node = this.nodes.find((n) => !n.harvested && Phaser.Math.Distance.Between(this.player.x, this.player.y, n.sprite.x, n.sprite.y) < 26)
     if (!node) {
@@ -712,6 +833,7 @@ class AdventureScene extends Phaser.Scene {
     this.inventory[node.type] += 1
     this.setStatus(`Collected ${node.type}.`)
     this.updateHud()
+    this.saveNow()
   }
 
   private tryCraftSelectedRecipe() {
@@ -734,11 +856,13 @@ class AdventureScene extends Phaser.Scene {
 
     this.setStatus(`Crafted ${recipe.label}!`)
     this.updateHud()
+    this.saveNow()
   }
 
   private updateHud() {
     const island = this.islands[this.islandIndex]
-    this.islandLabel.setText(`Island: ${island.name}`)
+    const questTag = this.quest.lanternDelivered ? ' | Quest: done' : this.quest.lanternRequested ? ' | Quest: active' : ''
+    this.islandLabel.setText(`Island: ${island.name}${questTag}`)
 
     this.materialText.setText([
       `MATERIALS`,
@@ -760,6 +884,62 @@ class AdventureScene extends Phaser.Scene {
         .join(' + ')
       return `${marker} ${r.label} (${cost})`
     }))
+  }
+
+  private loadSave() {
+    if (typeof window === 'undefined') return
+
+    try {
+      const raw = window.localStorage.getItem(this.saveKey)
+      if (!raw) return
+
+      const parsed = JSON.parse(raw) as Partial<SaveData>
+      const savedIsland = typeof parsed.islandIndex === 'number' ? Phaser.Math.Clamp(Math.floor(parsed.islandIndex), 0, this.islands.length - 1) : 0
+      this.islandIndex = savedIsland
+
+      if (parsed.inventory) {
+        this.inventory.wood = Math.max(0, Number(parsed.inventory.wood ?? 0))
+        this.inventory.stone = Math.max(0, Number(parsed.inventory.stone ?? 0))
+        this.inventory.fiber = Math.max(0, Number(parsed.inventory.fiber ?? 0))
+      }
+
+      if (parsed.crafted) {
+        this.crafted.raftKit = Math.max(0, Number(parsed.crafted.raftKit ?? 0))
+        this.crafted.bugLantern = Math.max(0, Number(parsed.crafted.bugLantern ?? 0))
+      }
+
+      this.selectedRecipe = Phaser.Math.Clamp(Math.floor(Number(parsed.selectedRecipe ?? 0)), 0, this.recipes.length - 1)
+
+      if (parsed.quest) {
+        this.quest.lanternRequested = Boolean(parsed.quest.lanternRequested)
+        this.quest.lanternDelivered = Boolean(parsed.quest.lanternDelivered)
+      }
+
+      if (typeof parsed.cameraZoom === 'number') {
+        this.cameras.main.setZoom(Phaser.Math.Clamp(parsed.cameraZoom, 0.75, 2.25))
+      }
+    } catch {
+      // ignore corrupted save
+    }
+  }
+
+  private saveNow() {
+    if (typeof window === 'undefined') return
+
+    const payload: SaveData = {
+      islandIndex: this.islandIndex,
+      inventory: { ...this.inventory },
+      crafted: { ...this.crafted },
+      selectedRecipe: this.selectedRecipe,
+      quest: { ...this.quest },
+      cameraZoom: this.cameras.main.zoom,
+    }
+
+    try {
+      window.localStorage.setItem(this.saveKey, JSON.stringify(payload))
+    } catch {
+      // storage might be unavailable
+    }
   }
 
   private isNear(target: Phaser.GameObjects.Rectangle, range: number) {
