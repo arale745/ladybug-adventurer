@@ -237,21 +237,30 @@ class AdventureScene extends Phaser.Scene {
   }
 
   private createHud() {
-    const panel = this.add.rectangle(GAME_WIDTH - 108, 70, 208, 132, 0x101d2f, 0.85)
+    const panel = this.add.rectangle(GAME_WIDTH - 120, 92, 230, 170, 0x101d2f, 0.85)
     panel.setStrokeStyle(1, 0x8eb7da)
     panel.setDepth(100)
 
     this.islandLabel = this.add.text(12, 10, '', { fontFamily: 'monospace', fontSize: '16px', color: '#f9f2d7' }).setDepth(101)
-    this.materialText = this.add.text(GAME_WIDTH - 205, 22, '', { fontFamily: 'monospace', fontSize: '13px', color: '#d8ecff' }).setDepth(101)
-    this.craftedText = this.add.text(GAME_WIDTH - 205, 56, '', { fontFamily: 'monospace', fontSize: '13px', color: '#d8ecff' }).setDepth(101)
-    this.recipeText = this.add.text(GAME_WIDTH - 205, 92, '', { fontFamily: 'monospace', fontSize: '13px', color: '#ffe39d' }).setDepth(101)
+    this.materialText = this.add.text(GAME_WIDTH - 224, 22, '', { fontFamily: 'monospace', fontSize: '12px', color: '#d8ecff' }).setDepth(101)
+    this.craftedText = this.add.text(GAME_WIDTH - 224, 76, '', { fontFamily: 'monospace', fontSize: '12px', color: '#d8ecff' }).setDepth(101)
+    this.recipeText = this.add.text(GAME_WIDTH - 224, 126, '', { fontFamily: 'monospace', fontSize: '12px', color: '#ffe39d' }).setDepth(101)
 
-    this.statusText = this.add.text(10, GAME_HEIGHT - 24, '', {
+    this.statusText = this.add.text(10, GAME_HEIGHT - 40, '', {
       fontFamily: 'monospace',
-      fontSize: '12px',
+      fontSize: '11px',
       color: '#ffe39d',
       backgroundColor: '#121f31',
       padding: { left: 4, right: 4, top: 2, bottom: 2 },
+      wordWrap: { width: GAME_WIDTH - 20 },
+    }).setDepth(102)
+
+    this.add.text(10, GAME_HEIGHT - 18, 'Z/X recipe  C craft  E gather  SPACE sail', {
+      fontFamily: 'monospace',
+      fontSize: '10px',
+      color: '#c9dfff',
+      backgroundColor: '#0f1a2b',
+      padding: { left: 3, right: 3, top: 1, bottom: 1 },
     }).setDepth(102)
   }
 
@@ -407,7 +416,7 @@ class AdventureScene extends Phaser.Scene {
   }
 
   private setStatus(message: string) {
-    this.statusText.setText(`${message}  [Z/X recipe, C craft, E gather, SPACE sail]`)
+    this.statusText.setText(message)
   }
 }
 
