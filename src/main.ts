@@ -124,6 +124,8 @@ class AdventureScene extends Phaser.Scene {
   private dodgeUntil = 0
   private dodgeCooldownUntil = 0
   private encounterCooldownUntil = 0
+  private dodgeIndicator!: Phaser.GameObjects.Arc
+  private dodgeAura!: Phaser.GameObjects.Arc
 
   private hudPanel!: Phaser.GameObjects.Rectangle
   private islandLabel!: Phaser.GameObjects.Text
@@ -670,6 +672,21 @@ class AdventureScene extends Phaser.Scene {
 
   private createPlayer() {
     this.playerShadow = this.trackWorld(this.add.ellipse(10 * TILE + HALF_TILE, WORLD_OFFSET_Y + 6 * TILE + HALF_TILE + 10, 20, 8, 0x000000, 0.25).setDepth(19))
+
+    // Dodge indicator (cooldown ring around player)
+    this.dodgeIndicator = this.trackWorld(
+      this.add.circle(0, 0, 30, 0x4a7f3d, 0.35)
+        .setDepth(17)
+        .setStrokeStyle(3, 0x6fbf66, 0.7)
+    )
+    this.dodgeIndicator.setVisible(false)
+
+    // Dodge aura (invulnerability effect)
+    this.dodgeAura = this.trackWorld(
+      this.add.circle(0, 0, 26, 0x7f3db8, 0.25)
+        .setDepth(16)
+    )
+    this.dodgeAura.setVisible(false)
 
     this.player = this.trackWorld(this.physics.add.sprite(10 * TILE + HALF_TILE, WORLD_OFFSET_Y + 6 * TILE + HALF_TILE, 'ladybug-0'))
     this.player.setScale(2)
@@ -1391,6 +1408,33 @@ class AdventureScene extends Phaser.Scene {
     if (this.playerShadow) {
       this.playerShadow.setPosition(this.player.x, this.player.y + 10)
       this.playerShadow.setScale(moving ? 1.1 : 1)
+    }
+
+    // Update dodge indicator and aura
+    if (this.dodgeIndicator && this.dodgeAura) {
+      this.dodgeIndicator.setPosition(this.player.x, this.player.y)
+      this.dodgeAura.setPosition(this.player.x, this.player.y)
+
+      // Show dodge aura during invulnerability (brighter, faster pulse)
+      this.dodgeAura.setVisible(now < this.dodgeUntil)
+      if (now < this.dodgeUntil) {
+        // Fast, bright pulse during invulnerability
+        const pulse = 0.25 + 0.2 * Math.sin(now / 80)
+        this.dodgeAura.setAlpha(pulse)
+      }
+
+      // Show dodge indicator when on cooldown
+      if (now >= this.dodgeCooldownUntil) {
+        this.dodgeIndicator.setVisible(false)
+      } else {
+        this.dodgeIndicator.setVisible(true)
+        // More dramatic pulse during cooldown
+        const pulse = 0.4 + 0.3 * Math.sin(now / 120)
+        this.dodgeIndicator.setAlpha(pulse)
+        // Bright red glow when on cooldown
+        this.dodgeIndicator.setStrokeStyle(3, 0xff6b6b, 1.0)
+        this.dodgeIndicator.setFillStyle(0xff4757, pulse * 0.6)
+      }
     }
   }
 
