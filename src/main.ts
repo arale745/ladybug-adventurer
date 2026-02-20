@@ -194,25 +194,84 @@ class AdventureScene extends Phaser.Scene {
     g.fillRect(0, 0, 10, 10)
     g.generateTexture('fiber', 10, 10)
 
-    g.clear()
-    g.fillStyle(0xd63b3b)
-    g.fillRect(0, 0, 12, 12)
-    g.fillStyle(0x111111)
-    g.fillRect(2, 2, 2, 2)
-    g.fillRect(8, 2, 2, 2)
-    g.fillRect(5, 6, 2, 2)
-    g.fillRect(2, 9, 2, 2)
-    g.fillRect(8, 9, 2, 2)
-    g.generateTexture('ladybug', 12, 12)
+    const drawLadybug = (key: string, lines: string[]) => {
+      const colors: Record<string, number> = {
+        b: 0x111111,
+        r: 0xd63b3b,
+        d: 0xa32525,
+        h: 0xff7575,
+        w: 0xf3f3f3,
+      }
+
+      g.clear()
+      lines.forEach((line, y) => {
+        for (let x = 0; x < line.length; x++) {
+          const c = line[x]
+          const color = colors[c]
+          if (color !== undefined) {
+            g.fillStyle(color)
+            g.fillRect(x, y, 1, 1)
+          }
+        }
+      })
+      g.generateTexture(key, 16, 16)
+    }
+
+    drawLadybug('ladybug-0', [
+      '................',
+      '......bb........',
+      '.....bwwb.......',
+      '....bbbbbb......',
+      '...bbrrrrbb.....',
+      '...brrbbrrb.....',
+      '..brrrbbrrrb....',
+      '..brhrbbrhrb....',
+      '..brrrbbrrrb....',
+      '..brrrbbrrrb....',
+      '...brbbbbrb.....',
+      '....bbbbbb......',
+      '.....b..b.......',
+      '....b....b......',
+      '................',
+      '................',
+    ])
+
+    drawLadybug('ladybug-1', [
+      '................',
+      '......bb........',
+      '.....bwwb.......',
+      '....bbbbbb......',
+      '..bbrrrrrrbb....',
+      '..brrrbbrrrb....',
+      '.brrhrbbrhrrb...',
+      '.brrrrbbrrrrb...',
+      '.brrrrbbrrrrb...',
+      '.brrrrbbrrrrb...',
+      '..brrbbbbrrb....',
+      '...bbbbbbbb.....',
+      '....b....b......',
+      '...b......b.....',
+      '................',
+      '................',
+    ])
 
     g.destroy()
   }
 
   private createPlayer() {
-    this.player = this.physics.add.sprite(10 * TILE + HALF_TILE, 6 * TILE + HALF_TILE, 'ladybug')
+    this.player = this.physics.add.sprite(10 * TILE + HALF_TILE, 6 * TILE + HALF_TILE, 'ladybug-0')
     this.player.setScale(2)
     this.player.setCollideWorldBounds(true)
     this.player.setSize(8, 8)
+
+    if (!this.anims.exists('ladybug-wiggle')) {
+      this.anims.create({
+        key: 'ladybug-wiggle',
+        frames: [{ key: 'ladybug-0' }, { key: 'ladybug-1' }],
+        frameRate: 6,
+        repeat: -1,
+      })
+    }
   }
 
   private createHotspots() {
@@ -347,6 +406,16 @@ class AdventureScene extends Phaser.Scene {
     if (this.cursors.down.isDown || this.wasd.S.isDown) vy = speed
 
     this.player.setVelocity(vx, vy)
+
+    if (vx !== 0) this.player.setFlipX(vx < 0)
+
+    const moving = vx !== 0 || vy !== 0
+    if (moving) {
+      if (!this.player.anims.isPlaying) this.player.play('ladybug-wiggle')
+    } else {
+      this.player.anims.stop()
+      this.player.setTexture('ladybug-0')
+    }
   }
 
   private harvestNearbyNode() {
