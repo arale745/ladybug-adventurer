@@ -92,7 +92,9 @@ class AdventureScene extends Phaser.Scene {
   private keyboardHintText!: Phaser.GameObjects.Text
   private hudToggleButton!: Phaser.GameObjects.Rectangle
   private hudToggleText!: Phaser.GameObjects.Text
+  private fpsText!: Phaser.GameObjects.Text
   private hudExpanded = true
+  private fpsTick = 0
 
   private uiCamera?: Phaser.Cameras.Scene2D.Camera
   private uiElements: Phaser.GameObjects.GameObject[] = []
@@ -232,6 +234,13 @@ class AdventureScene extends Phaser.Scene {
 
   update() {
     this.movePlayer()
+
+    this.fpsTick++
+    if (this.fpsTick % 12 === 0) {
+      const fps = this.game.loop.actualFps
+      this.fpsText.setText(`FPS: ${Math.round(fps)}`)
+      this.fpsText.setColor(fps >= 58 ? '#c6f7c6' : fps >= 45 ? '#ffe39d' : '#ff8f8f')
+    }
 
     if (Phaser.Input.Keyboard.JustDown(this.interactKey) || this.consumeTouchAction('interact')) this.handleInteract()
 
@@ -574,6 +583,14 @@ class AdventureScene extends Phaser.Scene {
       fontSize: '10px',
       color: '#d8ecff',
     }).setOrigin(0.5).setDepth(104))
+
+    this.fpsText = this.trackUi(this.add.text(GAME_WIDTH - 8, GAME_HEIGHT - 8, 'FPS: --', {
+      fontFamily: 'monospace',
+      fontSize: '10px',
+      color: '#c6f7c6',
+      backgroundColor: '#102216',
+      padding: { left: 3, right: 3, top: 1, bottom: 1 },
+    }).setOrigin(1, 1).setDepth(104))
   }
 
   private layoutHud() {
@@ -599,6 +616,7 @@ class AdventureScene extends Phaser.Scene {
         this.craftedText.setVisible(false)
         this.recipeText.setVisible(false)
       }
+      this.fpsText.setPosition(GAME_WIDTH - 8, GAME_HEIGHT - 8)
       return
     }
 
@@ -629,6 +647,8 @@ class AdventureScene extends Phaser.Scene {
       this.keyboardHintText.setVisible(true)
       this.keyboardHintText.setPosition(10, GAME_HEIGHT - 18).setFontSize(10)
     }
+
+    this.fpsText.setPosition(GAME_WIDTH - 8, GAME_HEIGHT - 8)
   }
 
   private layoutMobileControls() {
@@ -1059,6 +1079,11 @@ const config: Phaser.Types.Core.GameConfig = {
       gravity: { x: 0, y: 0 },
       debug: false,
     },
+  },
+  fps: {
+    target: 60,
+    min: 30,
+    forceSetTimeOut: false,
   },
   scene: [AdventureScene],
   scale: {
