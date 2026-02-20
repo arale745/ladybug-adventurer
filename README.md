@@ -15,7 +15,8 @@ A top-down 2D web adventure game prototype with a Game Boy Advance-inspired pixe
   - Craft selected: **C**
   - **Raft Kit** = 2 wood + 2 fiber
   - **Bug Lantern** = 1 wood + 2 stone
-- Built-in GBA-style tile pass with island palette swaps and pixel HUD panel.
+- Kenney CC0 terrain assets integrated (Tiny Town base tiles) with palette tinting.
+- Built-in GBA-style HUD and controls.
 
 ## Stack
 

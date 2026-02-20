@@ -195,6 +195,13 @@ class AdventureScene extends Phaser.Scene {
     super('adventure')
   }
 
+  preload() {
+    this.load.image('waterTile-0', '/assets/kenney/tiny-town/water0.png')
+    this.load.image('waterTile-1', '/assets/kenney/tiny-town/water1.png')
+    this.load.image('beachTile', '/assets/kenney/tiny-town/beach.png')
+    this.load.image('grassTile', '/assets/kenney/tiny-town/grass.png')
+  }
+
   create() {
     this.createTextures()
     this.createPlayer()
@@ -269,23 +276,7 @@ class AdventureScene extends Phaser.Scene {
   private createTextures() {
     const g = this.make.graphics({ x: 0, y: 0 })
 
-    const makeTile = (key: string, base: number, dot: number, phase = 0) => {
-      const speck = Math.max(2, Math.floor(TILE / 8))
-      g.clear()
-      g.fillStyle(base)
-      g.fillRect(0, 0, TILE, TILE)
-      g.fillStyle(dot)
-      g.fillRect(2 + phase, 2, speck, speck)
-      g.fillRect(TILE - 7 - phase, Math.floor(TILE * 0.3), speck, speck)
-      g.fillRect(Math.floor(TILE * 0.45), TILE - 6 - phase, speck, speck)
-      g.generateTexture(key, TILE, TILE)
-    }
-
-    makeTile('waterTile-0', 0x2f6798, 0x5f99c9, 0)
-    makeTile('waterTile-1', 0x2f6798, 0x79abd8, 1)
-    makeTile('beachTile', 0xe2cc8d, 0xcdb579)
-    makeTile('grassTile', 0x6fbf66, 0x518f49)
-
+    // Terrain tiles come from Kenney Tiny Town assets via preload().
     g.clear()
     g.fillStyle(0x8b6235)
     g.fillRect(0, 0, 10, 10)
@@ -761,35 +752,6 @@ class AdventureScene extends Phaser.Scene {
   }
 
   private buildIslandTiles(island: Island) {
-    this.textures.remove('waterTile-0')
-    this.textures.remove('waterTile-1')
-    this.textures.remove('beachTile')
-    this.textures.remove('grassTile')
-
-    const g = this.make.graphics({ x: 0, y: 0 })
-    const drawTile = (key: string, base: number, dot: number, phase = 0) => {
-      const speck = Math.max(2, Math.floor(TILE / 8))
-      g.clear()
-      g.fillStyle(base)
-      g.fillRect(0, 0, TILE, TILE)
-      g.fillStyle(dot)
-      g.fillRect(2 + phase, 2, speck, speck)
-      g.fillRect(TILE - 7 - phase, Math.floor(TILE * 0.3), speck, speck)
-      g.fillRect(Math.floor(TILE * 0.45), TILE - 6 - phase, speck, speck)
-      g.generateTexture(key, TILE, TILE)
-    }
-
-    drawTile('waterTile-0', island.palette.water, island.palette.waterFoam, 0)
-    drawTile('waterTile-1', island.palette.water, Phaser.Display.Color.Interpolate.ColorWithColor(
-      Phaser.Display.Color.ValueToColor(island.palette.waterFoam),
-      Phaser.Display.Color.ValueToColor(0xffffff),
-      100,
-      28,
-    ).color, 1)
-    drawTile('beachTile', island.palette.beach, island.palette.beachDark)
-    drawTile('grassTile', island.palette.grass, island.palette.grassDark)
-    g.destroy()
-
     this.waterTiles = []
 
     const cx = MAP_W / 2
@@ -809,8 +771,17 @@ class AdventureScene extends Phaser.Scene {
 
         const tile = this.trackWorld(this.add.image(tx * TILE + HALF_TILE, ty * TILE + HALF_TILE, key))
         tile.setDepth(-20)
+
+        if (key === 'waterTile-0') {
+          tile.setTint(island.palette.water)
+          this.waterTiles.push(tile)
+        } else if (key === 'beachTile') {
+          tile.setTint(island.palette.beach)
+        } else if (key === 'grassTile') {
+          tile.setTint(island.palette.grass)
+        }
+
         this.mapLayer.add(tile)
-        if (key === 'waterTile-0') this.waterTiles.push(tile)
       }
     }
   }
