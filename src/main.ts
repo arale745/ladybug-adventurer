@@ -752,7 +752,7 @@ class AdventureScene extends Phaser.Scene {
     this.updateHud()
   }
 
-  private buildIslandTiles(island: Island) {
+  private buildIslandTiles(_island: Island) {
     this.waterTiles = []
 
     const cx = MAP_W / 2
@@ -774,12 +774,7 @@ class AdventureScene extends Phaser.Scene {
         tile.setDepth(-20)
 
         if (key === 'waterTile-0') {
-          tile.setTint(island.palette.water)
           this.waterTiles.push(tile)
-        } else if (key === 'beachTile') {
-          tile.setTint(island.palette.beach)
-        } else if (key === 'grassTile') {
-          tile.setTint(island.palette.grass)
         }
 
         this.mapLayer.add(tile)
