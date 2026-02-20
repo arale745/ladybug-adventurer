@@ -74,7 +74,7 @@ type SaveData = {
   cameraZoom?: number
 }
 
-type TouchActionKey = 'interact' | 'craft' | 'travel'
+type TouchActionKey = 'interact' | 'craft' | 'travel' | 'dodge'
 type Biome = 'water' | 'beach' | 'grass'
 
 const TILE = 32
@@ -97,6 +97,7 @@ class AdventureScene extends Phaser.Scene {
   private interactKey!: Phaser.Input.Keyboard.Key
   private travelKey!: Phaser.Input.Keyboard.Key
   private craftKey!: Phaser.Input.Keyboard.Key
+  private dodgeKey!: Phaser.Input.Keyboard.Key
   private soundToggleKey!: Phaser.Input.Keyboard.Key
   private nextRecipeKey!: Phaser.Input.Keyboard.Key
   private prevRecipeKey!: Phaser.Input.Keyboard.Key
@@ -118,8 +119,10 @@ class AdventureScene extends Phaser.Scene {
   private npcLabel?: Phaser.GameObjects.Text
   private obstacleSprites: Phaser.Physics.Arcade.Sprite[] = []
   private landmarks: Array<{ def: LandmarkDef; key: string; sprite: Phaser.Physics.Arcade.Sprite; label: Phaser.GameObjects.Text }> = []
-  private encounters: Array<{ def: EncounterDef; sprite: Phaser.Physics.Arcade.Sprite }> = []
+  private encounters: Array<{ def: EncounterDef; sprite: Phaser.Physics.Arcade.Sprite; telegraphUntil: number }> = []
   private slowUntil = 0
+  private dodgeUntil = 0
+  private dodgeCooldownUntil = 0
   private encounterCooldownUntil = 0
 
   private hudPanel!: Phaser.GameObjects.Rectangle
@@ -143,7 +146,7 @@ class AdventureScene extends Phaser.Scene {
   private worldElements: Phaser.GameObjects.GameObject[] = []
 
   private touchMove = new Phaser.Math.Vector2(0, 0)
-  private queuedTouchActions: Record<TouchActionKey, boolean> = { interact: false, craft: false, travel: false }
+  private queuedTouchActions: Record<TouchActionKey, boolean> = { interact: false, craft: false, travel: false, dodge: false }
   private joystickBasePos = new Phaser.Math.Vector2(74, GAME_HEIGHT - 96)
   private joystickPointerId: number | null = null
   private joystickRadius = 38
@@ -320,7 +323,7 @@ class AdventureScene extends Phaser.Scene {
       window.addEventListener('beforeunload', () => this.saveNow())
     }
 
-    this.setStatus('Explore (E), craft (C), sail (SPACE), toggle SFX (M). Each island boosts one resource type.')
+    this.setStatus('Explore (E), dodge (F), craft (C), sail (SPACE), SFX (M). Each island boosts one resource type.')
   }
 
   update() {
@@ -359,12 +362,27 @@ class AdventureScene extends Phaser.Scene {
 
     if (Phaser.Input.Keyboard.JustDown(this.craftKey) || this.consumeTouchAction('craft')) this.tryCraftSelectedRecipe()
 
+    if (Phaser.Input.Keyboard.JustDown(this.dodgeKey) || this.consumeTouchAction('dodge')) this.tryDodge()
+
     if (Phaser.Input.Keyboard.JustDown(this.soundToggleKey)) {
       this.sfxEnabled = !this.sfxEnabled
       this.setStatus(`SFX ${this.sfxEnabled ? 'enabled' : 'muted'} (toggle: M).`)
       if (this.sfxEnabled) this.playSfx([523], 0.04, 0.06, 'square')
       this.saveNow()
     }
+  }
+
+  private tryDodge() {
+    const now = this.time.now
+    if (now < this.dodgeCooldownUntil) {
+      const left = Math.max(0, Math.ceil((this.dodgeCooldownUntil - now) / 100) / 10)
+      this.setStatus(`Dodge recharging (${left}s).`)
+      return
+    }
+
+    this.dodgeUntil = now + 320
+    this.dodgeCooldownUntil = now + 2200
+    this.playSfx([740, 880], 0.05, 0.06, 'square')
   }
 
   private createAudioContext() {
@@ -685,6 +703,7 @@ class AdventureScene extends Phaser.Scene {
     this.interactKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E)
     this.travelKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
     this.craftKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.C)
+    this.dodgeKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.F)
     this.soundToggleKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.M)
     this.nextRecipeKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.X)
     this.prevRecipeKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Z)
@@ -763,6 +782,7 @@ class AdventureScene extends Phaser.Scene {
     makeActionButton('SAIL', 0x397aab, 'travel')
     makeActionButton('E', 0x3d8e4c, 'interact')
     makeActionButton('C', 0x916340, 'craft')
+    makeActionButton('D', 0x7f3db8, 'dodge')
   }
 
   private updateTouchMove(pointerX: number, pointerY: number) {
@@ -840,7 +860,7 @@ class AdventureScene extends Phaser.Scene {
       wordWrap: { width: GAME_WIDTH - 20 },
     }).setDepth(102))
 
-    this.keyboardHintText = this.trackUi(this.add.text(10, GAME_HEIGHT - 18, 'Keys: Z/X recipe, C craft, E interact, SPACE sail, M sound', {
+    this.keyboardHintText = this.trackUi(this.add.text(10, GAME_HEIGHT - 18, 'Keys: Z/X recipe, E interact, F dodge, C craft, SPACE sail, M sound', {
       fontFamily: 'monospace',
       fontSize: '10px',
       color: '#c9dfff',
@@ -1015,13 +1035,32 @@ class AdventureScene extends Phaser.Scene {
   private tickEncounters() {
     const now = this.time.now
 
-    this.encounters.forEach(({ sprite }) => {
+    this.encounters.forEach((encounter) => {
+      const { sprite } = encounter
       const danger = Phaser.Math.Distance.Between(this.player.x, this.player.y, sprite.x, sprite.y)
+
+      if (danger < 38 && now >= encounter.telegraphUntil && now >= this.encounterCooldownUntil) {
+        encounter.telegraphUntil = now + 360
+        sprite.setTint(0xff7f7f)
+        this.playSfx([280], 0.028, 0.05, 'square')
+      } else if (now >= encounter.telegraphUntil) {
+        sprite.clearTint()
+      }
+
       if (danger >= 20 || now < this.encounterCooldownUntil) return
 
       this.encounterCooldownUntil = now + 1800
-      this.slowUntil = now + 2600
 
+      if (now < this.dodgeUntil) {
+        this.inventory.fiber += 1
+        this.setStatus('Perfect dodge! +1 fiber.')
+        this.playSfx([660, 880], 0.05, 0.07, 'triangle')
+        this.updateHud()
+        this.saveNow()
+        return
+      }
+
+      this.slowUntil = now + 2600
       const lootable = (Object.keys(this.inventory) as ResourceType[]).filter((k) => this.inventory[k] > 0)
       if (lootable.length > 0) {
         const stolen = Phaser.Utils.Array.GetRandom(lootable)
@@ -1045,6 +1084,8 @@ class AdventureScene extends Phaser.Scene {
     this.createTerrainTextures(island.palette)
     this.buildIslandTiles(island)
     this.slowUntil = 0
+    this.dodgeUntil = 0
+    this.dodgeCooldownUntil = 0
     this.encounterCooldownUntil = 0
 
     this.solidColliders.forEach((c) => c.destroy())
@@ -1136,7 +1177,7 @@ class AdventureScene extends Phaser.Scene {
       const sprite = this.trackWorld(this.physics.add.sprite(ex, ey, 'encounter-beetle').setDepth(31))
       sprite.setScale(1.8)
       sprite.body?.setAllowGravity(false)
-      this.encounters.push({ def: encounterDef, sprite })
+      this.encounters.push({ def: encounterDef, sprite, telegraphUntil: 0 })
 
       this.tweens.add({
         targets: sprite,
@@ -1320,7 +1361,8 @@ class AdventureScene extends Phaser.Scene {
   }
 
   private movePlayer() {
-    const speed = this.time.now < this.slowUntil ? 92 : 132
+    const now = this.time.now
+    const speed = now < this.dodgeUntil ? 214 : now < this.slowUntil ? 92 : 132
     let vx = 0
     let vy = 0
 
@@ -1534,6 +1576,8 @@ class AdventureScene extends Phaser.Scene {
         .join(' + ')
       return `${marker} ${r.label} (${cost})`
     })
+    const dodgeReady = this.time.now >= this.dodgeCooldownUntil
+    recipeLines.push(`Dodge [F]: ${dodgeReady ? 'ready' : 'cooldown'}`)
     recipeLines.push(`SFX [M]: ${this.sfxEnabled ? 'on' : 'off'}`)
     this.recipeText.setText(recipeLines)
   }
