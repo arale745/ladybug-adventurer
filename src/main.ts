@@ -226,6 +226,7 @@ class AdventureScene extends Phaser.Scene {
     this.loadIsland(this.islandIndex)
     this.setupCameras()
     this.startWaterAnimation()
+    this.exposeDebugHooks()
 
     this.time.addEvent({
       delay: 15000,
@@ -950,6 +951,25 @@ class AdventureScene extends Phaser.Scene {
         this.waterTiles.forEach((tile) => tile.setTexture(toFrame))
       },
     })
+  }
+
+  private exposeDebugHooks() {
+    if (typeof window === 'undefined') return
+
+    const w = window as any
+    w.__ladybugDebug = {
+      getState: () => ({
+        islandIndex: this.islandIndex,
+        islandName: this.islands[this.islandIndex]?.name,
+        player: { x: Math.round(this.player.x), y: Math.round(this.player.y) },
+        inventory: { ...this.inventory },
+        crafted: { ...this.crafted },
+        selectedRecipe: this.selectedRecipe,
+        quest: { ...this.quest },
+        cameraZoom: this.cameras.main.zoom,
+        fps: Math.round(this.game.loop.actualFps),
+      }),
+    }
   }
 
   private loadSave() {
