@@ -508,26 +508,22 @@ class AdventureScene extends Phaser.Scene {
   private layoutMobileControls() {
     if (!this.mobileControlsEnabled || !this.joystickBaseCircle || !this.joystickThumbCircle) return
 
-    const compact = this.scale.parentSize.width < 760
     const portrait = this.scale.parentSize.height > this.scale.parentSize.width
-
     const renderScale = Math.max(0.35, Math.min(1, this.scale.parentSize.width / GAME_WIDTH))
-    const touchBoost = 1 / renderScale
+    const pxToWorld = (px: number) => Math.round(px / renderScale)
 
-    const buttonRadius = Math.round((compact ? 22 : 24) * touchBoost)
-    this.joystickRadius = Math.round((compact ? 34 : 38) * touchBoost)
-    this.joystickBasePos.set(Math.round((compact ? 68 : 78) * touchBoost), GAME_HEIGHT - Math.round((compact ? 86 : 98) * touchBoost))
+    const buttonRadius = pxToWorld(portrait ? 34 : 28)
+    this.joystickRadius = pxToWorld(portrait ? 52 : 44)
+    this.joystickBasePos.set(pxToWorld(58), GAME_HEIGHT - pxToWorld(portrait ? 78 : 86))
 
     this.joystickBaseCircle.setPosition(this.joystickBasePos.x, this.joystickBasePos.y)
     this.joystickBaseCircle.setRadius(this.joystickRadius)
-    this.joystickThumbCircle.setRadius(Math.max(18, Math.round(this.joystickRadius * 0.45)))
+    this.joystickThumbCircle.setRadius(Math.max(pxToWorld(20), Math.round(this.joystickRadius * 0.45)))
     this.joystickThumbCircle.setPosition(this.joystickBasePos.x, this.joystickBasePos.y)
 
-    const rightX = GAME_WIDTH - Math.round((compact ? 42 : 48) * touchBoost)
-    const startY = portrait
-      ? GAME_HEIGHT - Math.round((compact ? 190 : 202) * touchBoost)
-      : GAME_HEIGHT - Math.round((compact ? 124 : 132) * touchBoost)
-    const gap = Math.round((compact ? 36 : 40) * touchBoost)
+    const rightX = GAME_WIDTH - pxToWorld(46)
+    const startY = GAME_HEIGHT - pxToWorld(portrait ? 250 : 170)
+    const gap = pxToWorld(portrait ? 88 : 68)
 
     this.touchButtons.forEach((btn, i) => {
       const y = startY + i * gap
@@ -535,7 +531,7 @@ class AdventureScene extends Phaser.Scene {
       btn.circle.setPosition(rightX, y)
       btn.circle.setInteractive(new Phaser.Geom.Circle(0, 0, buttonRadius), Phaser.Geom.Circle.Contains)
       btn.text.setPosition(rightX, y)
-      btn.text.setFontSize(`${Math.round((compact ? 10 : 12) * touchBoost)}px`)
+      btn.text.setFontSize(`${pxToWorld(portrait ? 16 : 13)}px`)
     })
 
     this.resetTouchMove()
