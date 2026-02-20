@@ -10,9 +10,12 @@ A top-down 2D web adventure game prototype with a Game Boy Advance-inspired pixe
   - wood
   - stone
   - fiber
-- Craft items (C near craft bench):
+- Craft items at the bench with a recipe picker:
+  - Select recipe: **Z / X**
+  - Craft selected: **C**
   - **Raft Kit** = 2 wood + 2 fiber
   - **Bug Lantern** = 1 wood + 2 stone
+- Built-in GBA-style tile pass with island palette swaps and pixel HUD panel.
 
 ## Stack
 

@@ -2,6 +2,7 @@ import './style.css'
 import Phaser from 'phaser'
 
 type ResourceType = 'wood' | 'stone' | 'fiber'
+type CraftKey = 'raftKit' | 'bugLantern'
 
 type ResourceNode = {
   type: ResourceType
@@ -11,13 +12,28 @@ type ResourceNode = {
 
 type Island = {
   name: string
-  ground: number
-  beach: number
-  resources: Array<{ type: ResourceType; x: number; y: number }>
+  palette: {
+    grass: number
+    grassDark: number
+    beach: number
+    beachDark: number
+    water: number
+    waterFoam: number
+  }
+  resources: Array<{ type: ResourceType; tx: number; ty: number }>
 }
 
-const GAME_WIDTH = 320
-const GAME_HEIGHT = 180
+type Recipe = {
+  key: CraftKey
+  label: string
+  cost: Partial<Record<ResourceType, number>>
+}
+
+const TILE = 16
+const MAP_W = 20
+const MAP_H = 12
+const GAME_WIDTH = TILE * MAP_W
+const GAME_HEIGHT = TILE * MAP_H
 
 class AdventureScene extends Phaser.Scene {
   private player!: Phaser.Physics.Arcade.Sprite
@@ -26,59 +42,81 @@ class AdventureScene extends Phaser.Scene {
   private interactKey!: Phaser.Input.Keyboard.Key
   private travelKey!: Phaser.Input.Keyboard.Key
   private craftKey!: Phaser.Input.Keyboard.Key
+  private nextRecipeKey!: Phaser.Input.Keyboard.Key
+  private prevRecipeKey!: Phaser.Input.Keyboard.Key
 
   private islandIndex = 0
   private nodes: ResourceNode[] = []
+  private mapLayer = new Phaser.Structs.List<Phaser.GameObjects.Image>(this)
 
-  private inventory: Record<ResourceType, number> = {
-    wood: 0,
-    stone: 0,
-    fiber: 0,
-  }
-
-  private crafted = {
-    raftKit: 0,
-    bugLantern: 0,
-  }
+  private readonly inventory: Record<ResourceType, number> = { wood: 0, stone: 0, fiber: 0 }
+  private readonly crafted: Record<CraftKey, number> = { raftKit: 0, bugLantern: 0 }
 
   private dock!: Phaser.GameObjects.Rectangle
   private craftBench!: Phaser.GameObjects.Rectangle
+
   private islandLabel!: Phaser.GameObjects.Text
-  private hudText!: Phaser.GameObjects.Text
+  private materialText!: Phaser.GameObjects.Text
+  private craftedText!: Phaser.GameObjects.Text
+  private recipeText!: Phaser.GameObjects.Text
   private statusText!: Phaser.GameObjects.Text
+
+  private selectedRecipe = 0
+  private readonly recipes: Recipe[] = [
+    { key: 'raftKit', label: 'Raft Kit', cost: { wood: 2, fiber: 2 } },
+    { key: 'bugLantern', label: 'Bug Lantern', cost: { wood: 1, stone: 2 } },
+  ]
 
   private readonly islands: Island[] = [
     {
       name: 'Mossy Nest',
-      ground: 0x6baf57,
-      beach: 0xd9c58c,
+      palette: {
+        grass: 0x6fbf66,
+        grassDark: 0x518f49,
+        beach: 0xe2cc8d,
+        beachDark: 0xcdb579,
+        water: 0x3572a8,
+        waterFoam: 0x5f99c9,
+      },
       resources: [
-        { type: 'wood', x: 80, y: 84 },
-        { type: 'wood', x: 150, y: 62 },
-        { type: 'fiber', x: 210, y: 110 },
-        { type: 'stone', x: 120, y: 128 },
+        { type: 'wood', tx: 5, ty: 4 },
+        { type: 'wood', tx: 10, ty: 3 },
+        { type: 'fiber', tx: 12, ty: 7 },
+        { type: 'stone', tx: 8, ty: 8 },
       ],
     },
     {
       name: 'Pebble Ring',
-      ground: 0x79c7b0,
-      beach: 0xe3d4a6,
+      palette: {
+        grass: 0x87c8b2,
+        grassDark: 0x66a28f,
+        beach: 0xe7d7a9,
+        beachDark: 0xd1bf90,
+        water: 0x2a679e,
+        waterFoam: 0x5f94c2,
+      },
       resources: [
-        { type: 'stone', x: 92, y: 68 },
-        { type: 'stone', x: 190, y: 104 },
-        { type: 'wood', x: 140, y: 122 },
-        { type: 'fiber', x: 232, y: 80 },
+        { type: 'stone', tx: 6, ty: 4 },
+        { type: 'stone', tx: 12, ty: 7 },
+        { type: 'wood', tx: 9, ty: 8 },
+        { type: 'fiber', tx: 14, ty: 5 },
       ],
     },
     {
       name: 'Sunset Atoll',
-      ground: 0x91b35e,
-      beach: 0xe8d89f,
+      palette: {
+        grass: 0x9fbd68,
+        grassDark: 0x78934a,
+        beach: 0xefd9a1,
+        beachDark: 0xd8be83,
+        water: 0x2f5d93,
+        waterFoam: 0x5f8abc,
+      },
       resources: [
-        { type: 'fiber', x: 102, y: 100 },
-        { type: 'fiber', x: 224, y: 98 },
-        { type: 'wood', x: 160, y: 72 },
-        { type: 'stone', x: 162, y: 128 },
+        { type: 'fiber', tx: 6, ty: 6 },
+        { type: 'fiber', tx: 13, ty: 6 },
+        { type: 'wood', tx: 10, ty: 4 },
+        { type: 'stone', tx: 10, ty: 8 },
       ],
     },
   ]
@@ -89,63 +127,72 @@ class AdventureScene extends Phaser.Scene {
 
   create() {
     this.createTextures()
-    this.createMapShell()
     this.createPlayer()
+    this.createHotspots()
     this.setupInput()
+    this.createHud()
     this.loadIsland(0)
 
-    this.islandLabel = this.add.text(8, 8, '', {
-      fontFamily: 'monospace',
-      fontSize: '9px',
-      color: '#f9f2d7',
-    })
-
-    this.hudText = this.add.text(8, 22, '', {
-      fontFamily: 'monospace',
-      fontSize: '8px',
-      color: '#f9f2d7',
-    })
-
-    this.statusText = this.add.text(8, GAME_HEIGHT - 14, '', {
-      fontFamily: 'monospace',
-      fontSize: '8px',
-      color: '#ffe39d',
-    })
-
-    this.updateHud()
-    this.setStatus('Collect resources with E. Travel islands on the dock (SPACE).')
+    this.setStatus('Explore, gather (E), craft (C), sail (SPACE).')
   }
 
   update() {
-    const speed = 60
-    let vx = 0
-    let vy = 0
+    this.movePlayer()
 
-    if (this.cursors.left.isDown || this.wasd.A.isDown) vx = -speed
-    if (this.cursors.right.isDown || this.wasd.D.isDown) vx = speed
-    if (this.cursors.up.isDown || this.wasd.W.isDown) vy = -speed
-    if (this.cursors.down.isDown || this.wasd.S.isDown) vy = speed
-
-    this.player.setVelocity(vx, vy)
-
-    if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
-      this.harvestNearbyNode()
-    }
+    if (Phaser.Input.Keyboard.JustDown(this.interactKey)) this.harvestNearbyNode()
 
     if (Phaser.Input.Keyboard.JustDown(this.travelKey) && this.isNear(this.dock, 18)) {
       const next = (this.islandIndex + 1) % this.islands.length
       this.loadIsland(next)
-      this.setStatus(`Sailed to ${this.islands[next].name}.`) // tiny fantasy boat magic
+      this.setStatus(`Sailed to ${this.islands[next].name}.`)
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.craftKey)) {
-      this.tryCraft()
+    if (Phaser.Input.Keyboard.JustDown(this.nextRecipeKey)) {
+      this.selectedRecipe = (this.selectedRecipe + 1) % this.recipes.length
+      this.updateHud()
     }
+    if (Phaser.Input.Keyboard.JustDown(this.prevRecipeKey)) {
+      this.selectedRecipe = (this.selectedRecipe - 1 + this.recipes.length) % this.recipes.length
+      this.updateHud()
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(this.craftKey)) this.tryCraftSelectedRecipe()
   }
 
   private createTextures() {
     const g = this.make.graphics({ x: 0, y: 0 })
 
+    const makeTile = (key: string, base: number, dot: number) => {
+      g.clear()
+      g.fillStyle(base)
+      g.fillRect(0, 0, TILE, TILE)
+      g.fillStyle(dot)
+      g.fillRect(2, 2, 2, 2)
+      g.fillRect(11, 5, 2, 2)
+      g.fillRect(7, 11, 2, 2)
+      g.generateTexture(key, TILE, TILE)
+    }
+
+    makeTile('waterTile', 0x2f6798, 0x5f99c9)
+    makeTile('beachTile', 0xe2cc8d, 0xcdb579)
+    makeTile('grassTile', 0x6fbf66, 0x518f49)
+
+    g.clear()
+    g.fillStyle(0x8b6235)
+    g.fillRect(0, 0, 10, 10)
+    g.generateTexture('wood', 10, 10)
+
+    g.clear()
+    g.fillStyle(0x929eaa)
+    g.fillRect(0, 0, 10, 10)
+    g.generateTexture('stone', 10, 10)
+
+    g.clear()
+    g.fillStyle(0x79b34d)
+    g.fillRect(0, 0, 10, 10)
+    g.generateTexture('fiber', 10, 10)
+
+    g.clear()
     g.fillStyle(0xd63b3b)
     g.fillRect(0, 0, 12, 12)
     g.fillStyle(0x111111)
@@ -155,51 +202,25 @@ class AdventureScene extends Phaser.Scene {
     g.fillRect(2, 9, 2, 2)
     g.fillRect(8, 9, 2, 2)
     g.generateTexture('ladybug', 12, 12)
-    g.clear()
 
-    g.fillStyle(0x6b4528)
-    g.fillRect(0, 0, 10, 10)
-    g.generateTexture('wood', 10, 10)
-    g.clear()
-
-    g.fillStyle(0x9097a3)
-    g.fillRect(0, 0, 10, 10)
-    g.generateTexture('stone', 10, 10)
-    g.clear()
-
-    g.fillStyle(0x79b34d)
-    g.fillRect(0, 0, 10, 10)
-    g.generateTexture('fiber', 10, 10)
     g.destroy()
   }
 
-  private createMapShell() {
-    const ocean = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x2d5f8d)
-    ocean.setDepth(-30)
+  private createPlayer() {
+    this.player = this.physics.add.sprite(10 * TILE + 8, 6 * TILE + 8, 'ladybug')
+    this.player.setCollideWorldBounds(true)
+    this.player.setSize(8, 8)
+  }
 
-    const beach = this.add.ellipse(GAME_WIDTH / 2, GAME_HEIGHT / 2, 250, 140, 0xe0cd95)
-    beach.setDepth(-20)
+  private createHotspots() {
+    this.dock = this.add.rectangle(18 * TILE + 8, 6 * TILE + 8, 14, 24, 0x8d6839).setDepth(20)
+    this.craftBench = this.add.rectangle(2 * TILE + 8, 6 * TILE + 8, 14, 14, 0x5f4529).setDepth(20)
 
-    const ground = this.add.ellipse(GAME_WIDTH / 2, GAME_HEIGHT / 2, 210, 104, 0x79b35d)
-    ground.setData('kind', 'ground')
-    ground.setDepth(-10)
-
-    this.dock = this.add.rectangle(280, 90, 16, 24, 0x8c6a3b)
-    this.craftBench = this.add.rectangle(36, 90, 16, 16, 0x59432b)
-
-    this.add.text(24, 102, 'CRAFT (C)', { fontFamily: 'monospace', fontSize: '7px', color: '#fff5d6' })
-    this.add.text(264, 104, 'DOCK', { fontFamily: 'monospace', fontSize: '7px', color: '#fff5d6' })
+    this.add.text(1 * TILE + 3, 7 * TILE + 13, 'CRAFT', { fontFamily: 'monospace', fontSize: '7px', color: '#fff5d6' }).setDepth(21)
+    this.add.text(17 * TILE + 9, 7 * TILE + 13, 'DOCK', { fontFamily: 'monospace', fontSize: '7px', color: '#fff5d6' }).setDepth(21)
 
     this.physics.add.existing(this.dock, true)
     this.physics.add.existing(this.craftBench, true)
-
-    this.cameras.main.setBackgroundColor(0x1f3f67)
-  }
-
-  private createPlayer() {
-    this.player = this.physics.add.sprite(160, 90, 'ladybug')
-    this.player.setCollideWorldBounds(true)
-    this.player.setSize(8, 8)
   }
 
   private setupInput() {
@@ -208,95 +229,180 @@ class AdventureScene extends Phaser.Scene {
     this.interactKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E)
     this.travelKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
     this.craftKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.C)
+    this.nextRecipeKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.X)
+    this.prevRecipeKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Z)
+  }
+
+  private createHud() {
+    const panel = this.add.rectangle(244, 44, 146, 74, 0x101d2f, 0.85)
+    panel.setStrokeStyle(1, 0x8eb7da)
+    panel.setDepth(100)
+
+    this.islandLabel = this.add.text(8, 6, '', { fontFamily: 'monospace', fontSize: '9px', color: '#f9f2d7' }).setDepth(101)
+    this.materialText = this.add.text(176, 14, '', { fontFamily: 'monospace', fontSize: '8px', color: '#d8ecff' }).setDepth(101)
+    this.craftedText = this.add.text(176, 32, '', { fontFamily: 'monospace', fontSize: '8px', color: '#d8ecff' }).setDepth(101)
+    this.recipeText = this.add.text(176, 50, '', { fontFamily: 'monospace', fontSize: '8px', color: '#ffe39d' }).setDepth(101)
+
+    this.statusText = this.add.text(8, GAME_HEIGHT - 13, '', {
+      fontFamily: 'monospace',
+      fontSize: '8px',
+      color: '#ffe39d',
+      backgroundColor: '#121f31',
+      padding: { left: 3, right: 3, top: 1, bottom: 1 },
+    }).setDepth(102)
   }
 
   private loadIsland(index: number) {
     this.islandIndex = index
-
-    for (const node of this.nodes) {
-      node.sprite.destroy()
-    }
-    this.nodes = []
+    this.clearMapTiles()
 
     const island = this.islands[index]
+    this.buildIslandTiles(island)
 
-    const ground = this.children.list.find((obj) => obj.getData('kind') === 'ground') as Phaser.GameObjects.Ellipse
-    ground.setFillStyle(island.ground)
+    for (const node of this.nodes) node.sprite.destroy()
+    this.nodes = []
 
-    const beach = this.children.list.find((obj) => obj instanceof Phaser.GameObjects.Ellipse && obj !== ground) as Phaser.GameObjects.Ellipse
-    beach.setFillStyle(island.beach)
-
-    island.resources.forEach((res) => {
-      const sprite = this.physics.add.sprite(res.x, res.y, res.type)
+    for (const res of island.resources) {
+      const x = res.tx * TILE + 8
+      const y = res.ty * TILE + 8
+      const sprite = this.physics.add.sprite(x, y, res.type).setDepth(30)
       sprite.setImmovable(true)
       sprite.body?.setAllowGravity(false)
       this.nodes.push({ type: res.type, sprite, harvested: false })
-    })
+    }
 
-    this.player.setPosition(160, 90)
+    this.player.setPosition(10 * TILE + 8, 6 * TILE + 8)
     this.updateHud()
+  }
+
+  private buildIslandTiles(island: Island) {
+    this.textures.remove('waterTile')
+    this.textures.remove('beachTile')
+    this.textures.remove('grassTile')
+
+    const g = this.make.graphics({ x: 0, y: 0 })
+    const drawTile = (key: string, base: number, dot: number) => {
+      g.clear()
+      g.fillStyle(base)
+      g.fillRect(0, 0, TILE, TILE)
+      g.fillStyle(dot)
+      g.fillRect(2, 2, 2, 2)
+      g.fillRect(11, 5, 2, 2)
+      g.fillRect(7, 11, 2, 2)
+      g.generateTexture(key, TILE, TILE)
+    }
+
+    drawTile('waterTile', island.palette.water, island.palette.waterFoam)
+    drawTile('beachTile', island.palette.beach, island.palette.beachDark)
+    drawTile('grassTile', island.palette.grass, island.palette.grassDark)
+    g.destroy()
+
+    const cx = MAP_W / 2
+    const cy = MAP_H / 2
+
+    for (let ty = 0; ty < MAP_H; ty++) {
+      for (let tx = 0; tx < MAP_W; tx++) {
+        const dx = (tx + 0.5 - cx) / 8
+        const dy = (ty + 0.5 - cy) / 4.8
+        const d = Math.sqrt(dx * dx + dy * dy)
+
+        let key = 'waterTile'
+        if (d < 1.0) key = 'grassTile'
+        else if (d < 1.25) key = 'beachTile'
+
+        const tile = this.add.image(tx * TILE + 8, ty * TILE + 8, key)
+        tile.setDepth(-20)
+        this.mapLayer.add(tile)
+      }
+    }
+  }
+
+  private clearMapTiles() {
+    this.mapLayer.list.forEach((tile) => tile.destroy())
+    this.mapLayer.removeAll()
+  }
+
+  private movePlayer() {
+    const speed = 66
+    let vx = 0
+    let vy = 0
+
+    if (this.cursors.left.isDown || this.wasd.A.isDown) vx = -speed
+    if (this.cursors.right.isDown || this.wasd.D.isDown) vx = speed
+    if (this.cursors.up.isDown || this.wasd.W.isDown) vy = -speed
+    if (this.cursors.down.isDown || this.wasd.S.isDown) vy = speed
+
+    this.player.setVelocity(vx, vy)
   }
 
   private harvestNearbyNode() {
     const node = this.nodes.find((n) => !n.harvested && Phaser.Math.Distance.Between(this.player.x, this.player.y, n.sprite.x, n.sprite.y) < 16)
-
     if (!node) {
-      this.setStatus('No resource nearby. Get close and press E.')
+      this.setStatus('No resource nearby. Move close and press E.')
       return
     }
 
     node.harvested = true
-    node.sprite.setTint(0x333333)
     node.sprite.disableBody(true, true)
     this.inventory[node.type] += 1
-
-    this.setStatus(`Collected ${node.type}.`) 
+    this.setStatus(`Collected ${node.type}.`)
     this.updateHud()
   }
 
-  private tryCraft() {
+  private tryCraftSelectedRecipe() {
     if (!this.isNear(this.craftBench, 20)) {
-      this.setStatus('Stand by the craft bench to craft.')
+      this.setStatus('Stand near the craft bench to craft.')
       return
     }
 
-    if (this.inventory.wood >= 2 && this.inventory.fiber >= 2) {
-      this.inventory.wood -= 2
-      this.inventory.fiber -= 2
-      this.crafted.raftKit += 1
-      this.setStatus('Crafted a Raft Kit! (2 wood + 2 fiber)')
-      this.updateHud()
+    const recipe = this.recipes[this.selectedRecipe]
+    const canCraft = Object.entries(recipe.cost).every(([k, amount]) => this.inventory[k as ResourceType] >= (amount ?? 0))
+    if (!canCraft) {
+      this.setStatus(`Missing materials for ${recipe.label}.`)
       return
     }
 
-    if (this.inventory.wood >= 1 && this.inventory.stone >= 2) {
-      this.inventory.wood -= 1
-      this.inventory.stone -= 2
-      this.crafted.bugLantern += 1
-      this.setStatus('Crafted a Bug Lantern! (1 wood + 2 stone)')
-      this.updateHud()
-      return
-    }
+    Object.entries(recipe.cost).forEach(([k, amount]) => {
+      this.inventory[k as ResourceType] -= amount ?? 0
+    })
+    this.crafted[recipe.key] += 1
 
-    this.setStatus('Not enough materials. Need wood/fiber or wood/stone combos.')
+    this.setStatus(`Crafted ${recipe.label}!`)
+    this.updateHud()
+  }
+
+  private updateHud() {
+    const island = this.islands[this.islandIndex]
+    this.islandLabel.setText(`Island: ${island.name}`)
+
+    this.materialText.setText([
+      `MATERIALS`,
+      `wood:  ${this.inventory.wood}`,
+      `stone: ${this.inventory.stone}`,
+      `fiber: ${this.inventory.fiber}`,
+    ])
+
+    this.craftedText.setText([
+      `CRAFTED`,
+      `raft kit:    ${this.crafted.raftKit}`,
+      `bug lantern: ${this.crafted.bugLantern}`,
+    ])
+
+    this.recipeText.setText(this.recipes.map((r, i) => {
+      const marker = i === this.selectedRecipe ? '>' : ' '
+      const cost = Object.entries(r.cost)
+        .map(([k, v]) => `${v}${k[0]}`)
+        .join(' + ')
+      return `${marker} ${r.label} (${cost})`
+    }))
   }
 
   private isNear(target: Phaser.GameObjects.Rectangle, range: number) {
     return Phaser.Math.Distance.Between(this.player.x, this.player.y, target.x, target.y) <= range
   }
 
-  private updateHud() {
-    const island = this.islands[this.islandIndex]
-    this.islandLabel.setText(`Island: ${island.name}`)
-    this.hudText.setText([
-      `Materials  wood:${this.inventory.wood} stone:${this.inventory.stone} fiber:${this.inventory.fiber}`,
-      `Crafted    raft-kit:${this.crafted.raftKit} bug-lantern:${this.crafted.bugLantern}`,
-      'Move: WASD/Arrows  Harvest: E  Craft: C  Travel: SPACE',
-    ])
-  }
-
   private setStatus(message: string) {
-    this.statusText.setText(message)
+    this.statusText.setText(`${message}  [Z/X recipe, C craft, E gather, SPACE sail]`)
   }
 }
 
