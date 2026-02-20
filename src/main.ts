@@ -29,6 +29,8 @@ type Recipe = {
   cost: Partial<Record<ResourceType, number>>
 }
 
+type TouchActionKey = 'interact' | 'craft' | 'travel'
+
 const TILE = 32
 const HALF_TILE = TILE / 2
 const MAP_W = 20
@@ -56,17 +58,26 @@ class AdventureScene extends Phaser.Scene {
   private dock!: Phaser.GameObjects.Rectangle
   private craftBench!: Phaser.GameObjects.Rectangle
 
+  private hudPanel!: Phaser.GameObjects.Rectangle
   private islandLabel!: Phaser.GameObjects.Text
   private materialText!: Phaser.GameObjects.Text
   private craftedText!: Phaser.GameObjects.Text
   private recipeText!: Phaser.GameObjects.Text
   private statusText!: Phaser.GameObjects.Text
+  private keyboardHintText!: Phaser.GameObjects.Text
 
   private touchMove = new Phaser.Math.Vector2(0, 0)
-  private queuedTouchActions = { interact: false, craft: false, travel: false }
+  private queuedTouchActions: Record<TouchActionKey, boolean> = { interact: false, craft: false, travel: false }
   private joystickBasePos = new Phaser.Math.Vector2(74, GAME_HEIGHT - 96)
   private joystickPointerId: number | null = null
+  private joystickRadius = 38
+  private joystickBaseCircle?: Phaser.GameObjects.Arc
   private joystickThumbCircle?: Phaser.GameObjects.Arc
+  private touchButtons: Array<{
+    key: TouchActionKey
+    circle: Phaser.GameObjects.Arc
+    text: Phaser.GameObjects.Text
+  }> = []
   private mobileControlsEnabled = false
 
   private selectedRecipe = 0
@@ -140,8 +151,15 @@ class AdventureScene extends Phaser.Scene {
     this.setupInput()
     this.createHud()
     this.createMobileControls()
-    this.loadIsland(0)
+    this.layoutHud()
+    this.layoutMobileControls()
 
+    this.scale.on(Phaser.Scale.Events.RESIZE, () => {
+      this.layoutHud()
+      this.layoutMobileControls()
+    })
+
+    this.loadIsland(0)
     this.setStatus('Explore, gather (E), craft (C), sail (SPACE).')
   }
 
@@ -309,16 +327,12 @@ class AdventureScene extends Phaser.Scene {
 
     this.mobileControlsEnabled = true
 
-    const joyX = this.joystickBasePos.x
-    const joyY = this.joystickBasePos.y
-    const joyRadius = 38
-
-    this.add.circle(joyX, joyY, joyRadius, 0x20395a, 0.45).setDepth(140)
-    this.joystickThumbCircle = this.add.circle(joyX, joyY, 16, 0x77a8d8, 0.72).setDepth(141)
+    this.joystickBaseCircle = this.add.circle(this.joystickBasePos.x, this.joystickBasePos.y, this.joystickRadius, 0x20395a, 0.45).setDepth(140)
+    this.joystickThumbCircle = this.add.circle(this.joystickBasePos.x, this.joystickBasePos.y, 16, 0x77a8d8, 0.72).setDepth(141)
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      const dist = Phaser.Math.Distance.Between(pointer.x, pointer.y, joyX, joyY)
-      if (dist <= joyRadius * 1.5 && this.joystickPointerId === null) {
+      const dist = Phaser.Math.Distance.Between(pointer.x, pointer.y, this.joystickBasePos.x, this.joystickBasePos.y)
+      if (dist <= this.joystickRadius * 1.5 && this.joystickPointerId === null) {
         this.joystickPointerId = pointer.id
         this.updateTouchMove(pointer.x, pointer.y)
       }
@@ -334,37 +348,38 @@ class AdventureScene extends Phaser.Scene {
     this.input.on('pointerup', releaseStick)
     this.input.on('pointerupoutside', releaseStick)
 
-    const makeActionButton = (x: number, y: number, label: string, color: number, key: keyof typeof this.queuedTouchActions) => {
-      const circle = this.add.circle(x, y, 24, color, 0.7).setDepth(140)
+    const makeActionButton = (label: string, color: number, key: TouchActionKey) => {
+      const circle = this.add.circle(0, 0, 24, color, 0.7).setDepth(140)
       circle.setStrokeStyle(2, 0xe7f1ff, 0.75)
       circle.setInteractive(new Phaser.Geom.Circle(0, 0, 24), Phaser.Geom.Circle.Contains)
       circle.on('pointerdown', () => {
         this.queuedTouchActions[key] = true
       })
 
-      this.add.text(x, y, label, {
+      const text = this.add.text(0, 0, label, {
         fontFamily: 'monospace',
         fontSize: '12px',
         color: '#ffffff',
       }).setOrigin(0.5).setDepth(141)
+
+      this.touchButtons.push({ key, circle, text })
     }
 
-    makeActionButton(GAME_WIDTH - 48, GAME_HEIGHT - 122, 'SAIL', 0x397aab, 'travel')
-    makeActionButton(GAME_WIDTH - 48, GAME_HEIGHT - 84, 'E', 0x3d8e4c, 'interact')
-    makeActionButton(GAME_WIDTH - 48, GAME_HEIGHT - 46, 'C', 0x916340, 'craft')
+    makeActionButton('SAIL', 0x397aab, 'travel')
+    makeActionButton('E', 0x3d8e4c, 'interact')
+    makeActionButton('C', 0x916340, 'craft')
   }
 
   private updateTouchMove(pointerX: number, pointerY: number) {
-    const joyRadius = 38
     const dx = pointerX - this.joystickBasePos.x
     const dy = pointerY - this.joystickBasePos.y
     const vector = new Phaser.Math.Vector2(dx, dy)
 
-    if (vector.length() > joyRadius) {
-      vector.normalize().scale(joyRadius)
+    if (vector.length() > this.joystickRadius) {
+      vector.normalize().scale(this.joystickRadius)
     }
 
-    this.touchMove.set(vector.x / joyRadius, vector.y / joyRadius)
+    this.touchMove.set(vector.x / this.joystickRadius, vector.y / this.joystickRadius)
     this.joystickThumbCircle?.setPosition(this.joystickBasePos.x + vector.x, this.joystickBasePos.y + vector.y)
   }
 
@@ -374,16 +389,16 @@ class AdventureScene extends Phaser.Scene {
     this.joystickThumbCircle?.setPosition(this.joystickBasePos.x, this.joystickBasePos.y)
   }
 
-  private consumeTouchAction(action: keyof typeof this.queuedTouchActions) {
+  private consumeTouchAction(action: TouchActionKey) {
     const active = this.queuedTouchActions[action]
     this.queuedTouchActions[action] = false
     return active
   }
 
   private createHud() {
-    const panel = this.add.rectangle(GAME_WIDTH - 120, 92, 230, 170, 0x101d2f, 0.85)
-    panel.setStrokeStyle(1, 0x8eb7da)
-    panel.setDepth(100)
+    this.hudPanel = this.add.rectangle(GAME_WIDTH - 120, 92, 230, 170, 0x101d2f, 0.85)
+    this.hudPanel.setStrokeStyle(1, 0x8eb7da)
+    this.hudPanel.setDepth(100)
 
     this.islandLabel = this.add.text(12, 10, '', { fontFamily: 'monospace', fontSize: '16px', color: '#f9f2d7' }).setDepth(101)
     this.materialText = this.add.text(GAME_WIDTH - 224, 22, '', { fontFamily: 'monospace', fontSize: '12px', color: '#d8ecff' }).setDepth(101)
@@ -399,13 +414,65 @@ class AdventureScene extends Phaser.Scene {
       wordWrap: { width: GAME_WIDTH - 20 },
     }).setDepth(102)
 
-    this.add.text(10, GAME_HEIGHT - 18, 'Keys: Z/X recipe, C craft, E gather, SPACE sail', {
+    this.keyboardHintText = this.add.text(10, GAME_HEIGHT - 18, 'Keys: Z/X recipe, C craft, E gather, SPACE sail', {
       fontFamily: 'monospace',
       fontSize: '10px',
       color: '#c9dfff',
       backgroundColor: '#0f1a2b',
       padding: { left: 3, right: 3, top: 1, bottom: 1 },
     }).setDepth(102)
+  }
+
+  private layoutHud() {
+    const compact = this.mobileControlsEnabled || this.scale.parentSize.width < 900
+
+    if (compact) {
+      this.hudPanel.setPosition(GAME_WIDTH - 96, 82).setSize(186, 146)
+      this.islandLabel.setFontSize(14)
+      this.materialText.setPosition(GAME_WIDTH - 182, 18).setFontSize(11)
+      this.craftedText.setPosition(GAME_WIDTH - 182, 63).setFontSize(11)
+      this.recipeText.setPosition(GAME_WIDTH - 182, 104).setFontSize(11)
+      this.statusText.setPosition(8, GAME_HEIGHT - 56).setFontSize(10).setWordWrapWidth(GAME_WIDTH - 16)
+      this.keyboardHintText.setVisible(!this.mobileControlsEnabled)
+      this.keyboardHintText.setPosition(8, GAME_HEIGHT - 18).setFontSize(9)
+    } else {
+      this.hudPanel.setPosition(GAME_WIDTH - 120, 92).setSize(230, 170)
+      this.islandLabel.setFontSize(16)
+      this.materialText.setPosition(GAME_WIDTH - 224, 22).setFontSize(12)
+      this.craftedText.setPosition(GAME_WIDTH - 224, 76).setFontSize(12)
+      this.recipeText.setPosition(GAME_WIDTH - 224, 126).setFontSize(12)
+      this.statusText.setPosition(10, GAME_HEIGHT - 40).setFontSize(11).setWordWrapWidth(GAME_WIDTH - 20)
+      this.keyboardHintText.setVisible(true)
+      this.keyboardHintText.setPosition(10, GAME_HEIGHT - 18).setFontSize(10)
+    }
+  }
+
+  private layoutMobileControls() {
+    if (!this.mobileControlsEnabled || !this.joystickBaseCircle || !this.joystickThumbCircle) return
+
+    const compact = this.scale.parentSize.width < 760
+    const buttonRadius = compact ? 22 : 24
+    this.joystickRadius = compact ? 34 : 38
+    this.joystickBasePos.set(compact ? 68 : 78, GAME_HEIGHT - (compact ? 92 : 98))
+
+    this.joystickBaseCircle.setPosition(this.joystickBasePos.x, this.joystickBasePos.y)
+    this.joystickBaseCircle.setRadius(this.joystickRadius)
+    this.joystickThumbCircle.setPosition(this.joystickBasePos.x, this.joystickBasePos.y)
+
+    const rightX = GAME_WIDTH - (compact ? 42 : 48)
+    const startY = GAME_HEIGHT - (compact ? 124 : 132)
+    const gap = compact ? 36 : 40
+
+    this.touchButtons.forEach((btn, i) => {
+      const y = startY + i * gap
+      btn.circle.setRadius(buttonRadius)
+      btn.circle.setPosition(rightX, y)
+      btn.circle.setInteractive(new Phaser.Geom.Circle(0, 0, buttonRadius), Phaser.Geom.Circle.Contains)
+      btn.text.setPosition(rightX, y)
+      btn.text.setFontSize(compact ? '10px' : '12px')
+    })
+
+    this.resetTouchMove()
   }
 
   private loadIsland(index: number) {
