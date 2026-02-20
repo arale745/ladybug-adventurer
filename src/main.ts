@@ -35,8 +35,14 @@ const TILE = 32
 const HALF_TILE = TILE / 2
 const MAP_W = 20
 const MAP_H = 12
-const GAME_WIDTH = TILE * MAP_W
-const GAME_HEIGHT = TILE * MAP_H
+const MAP_PIXEL_WIDTH = TILE * MAP_W
+const MAP_PIXEL_HEIGHT = TILE * MAP_H
+
+const VIEW_WIDTH = typeof window !== 'undefined' ? window.innerWidth : 1280
+const VIEW_HEIGHT = typeof window !== 'undefined' ? window.innerHeight : 720
+const GAME_WIDTH = MAP_PIXEL_WIDTH
+const GAME_HEIGHT = Math.max(MAP_PIXEL_HEIGHT, Math.min(1200, Math.round((GAME_WIDTH * VIEW_HEIGHT) / Math.max(1, VIEW_WIDTH))))
+const WORLD_OFFSET_Y = Math.floor((GAME_HEIGHT - MAP_PIXEL_HEIGHT) / 2)
 
 class AdventureScene extends Phaser.Scene {
   private player!: Phaser.Physics.Arcade.Sprite
@@ -151,6 +157,7 @@ class AdventureScene extends Phaser.Scene {
     this.createTextures()
     this.createPlayer()
     this.createHotspots()
+    this.physics.world.setBounds(0, WORLD_OFFSET_Y, MAP_PIXEL_WIDTH, MAP_PIXEL_HEIGHT)
     this.setupInput()
     this.createHud()
     this.createMobileControls()
@@ -291,7 +298,7 @@ class AdventureScene extends Phaser.Scene {
   }
 
   private createPlayer() {
-    this.player = this.physics.add.sprite(10 * TILE + HALF_TILE, 6 * TILE + HALF_TILE, 'ladybug-0')
+    this.player = this.physics.add.sprite(10 * TILE + HALF_TILE, WORLD_OFFSET_Y + 6 * TILE + HALF_TILE, 'ladybug-0')
     this.player.setScale(2)
     this.player.setCollideWorldBounds(true)
     this.player.setSize(8, 8)
@@ -307,11 +314,11 @@ class AdventureScene extends Phaser.Scene {
   }
 
   private createHotspots() {
-    this.dock = this.add.rectangle(18 * TILE + HALF_TILE, 6 * TILE + HALF_TILE, 28, 48, 0x8d6839).setDepth(20)
-    this.craftBench = this.add.rectangle(2 * TILE + HALF_TILE, 6 * TILE + HALF_TILE, 28, 28, 0x5f4529).setDepth(20)
+    this.dock = this.add.rectangle(18 * TILE + HALF_TILE, WORLD_OFFSET_Y + 6 * TILE + HALF_TILE, 28, 48, 0x8d6839).setDepth(20)
+    this.craftBench = this.add.rectangle(2 * TILE + HALF_TILE, WORLD_OFFSET_Y + 6 * TILE + HALF_TILE, 28, 28, 0x5f4529).setDepth(20)
 
-    this.add.text(1 * TILE + 6, 7 * TILE + 12, 'CRAFT', { fontFamily: 'monospace', fontSize: '12px', color: '#fff5d6' }).setDepth(21)
-    this.add.text(17 * TILE + 10, 7 * TILE + 12, 'DOCK', { fontFamily: 'monospace', fontSize: '12px', color: '#fff5d6' }).setDepth(21)
+    this.add.text(1 * TILE + 6, WORLD_OFFSET_Y + 7 * TILE + 12, 'CRAFT', { fontFamily: 'monospace', fontSize: '12px', color: '#fff5d6' }).setDepth(21)
+    this.add.text(17 * TILE + 10, WORLD_OFFSET_Y + 7 * TILE + 12, 'DOCK', { fontFamily: 'monospace', fontSize: '12px', color: '#fff5d6' }).setDepth(21)
 
     this.physics.add.existing(this.dock, true)
     this.physics.add.existing(this.craftBench, true)
@@ -540,7 +547,7 @@ class AdventureScene extends Phaser.Scene {
 
     for (const res of island.resources) {
       const x = res.tx * TILE + HALF_TILE
-      const y = res.ty * TILE + HALF_TILE
+      const y = WORLD_OFFSET_Y + res.ty * TILE + HALF_TILE
       const sprite = this.physics.add.sprite(x, y, res.type).setDepth(30)
       sprite.setScale(2)
       sprite.setImmovable(true)
@@ -548,7 +555,7 @@ class AdventureScene extends Phaser.Scene {
       this.nodes.push({ type: res.type, sprite, harvested: false })
     }
 
-    this.player.setPosition(10 * TILE + HALF_TILE, 6 * TILE + HALF_TILE)
+    this.player.setPosition(10 * TILE + HALF_TILE, WORLD_OFFSET_Y + 6 * TILE + HALF_TILE)
     this.updateHud()
   }
 
@@ -588,7 +595,7 @@ class AdventureScene extends Phaser.Scene {
         if (d < 1.0) key = 'grassTile'
         else if (d < 1.25) key = 'beachTile'
 
-        const tile = this.add.image(tx * TILE + HALF_TILE, ty * TILE + HALF_TILE, key)
+        const tile = this.add.image(tx * TILE + HALF_TILE, WORLD_OFFSET_Y + ty * TILE + HALF_TILE, key)
         tile.setDepth(-20)
         this.mapLayer.add(tile)
       }
