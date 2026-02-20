@@ -71,6 +71,7 @@ class AdventureScene extends Phaser.Scene {
 
   private islandIndex = 0
   private nodes: ResourceNode[] = []
+  private solidColliders: Phaser.Physics.Arcade.Collider[] = []
   private mapLayer = new Phaser.Structs.List<Phaser.GameObjects.Image>(this)
 
   private readonly inventory: Record<ResourceType, number> = { wood: 0, stone: 0, fiber: 0 }
@@ -691,6 +692,9 @@ class AdventureScene extends Phaser.Scene {
     const island = this.islands[index]
     this.buildIslandTiles(island)
 
+    this.solidColliders.forEach((c) => c.destroy())
+    this.solidColliders = []
+
     for (const node of this.nodes) node.sprite.destroy()
     this.nodes = []
 
@@ -709,6 +713,7 @@ class AdventureScene extends Phaser.Scene {
       sprite.setImmovable(true)
       sprite.body?.setAllowGravity(false)
       this.nodes.push({ type: res.type, sprite, harvested: false })
+      this.solidColliders.push(this.physics.add.collider(this.player, sprite))
 
       this.tweens.add({
         targets: sprite,
@@ -730,6 +735,8 @@ class AdventureScene extends Phaser.Scene {
       this.npcSprite.setImmovable(true)
       const body = this.npcSprite.body
       if (body && 'setAllowGravity' in body) body.setAllowGravity(false)
+      this.solidColliders.push(this.physics.add.collider(this.player, this.npcSprite))
+
       this.npcLabel = this.trackWorld(this.add.text(npcX - 20, npcY - 26, npc.name, {
         fontFamily: 'monospace',
         fontSize: '10px',
