@@ -65,6 +65,9 @@ class AdventureScene extends Phaser.Scene {
   private recipeText!: Phaser.GameObjects.Text
   private statusText!: Phaser.GameObjects.Text
   private keyboardHintText!: Phaser.GameObjects.Text
+  private hudToggleButton!: Phaser.GameObjects.Rectangle
+  private hudToggleText!: Phaser.GameObjects.Text
+  private hudExpanded = true
 
   private touchMove = new Phaser.Math.Vector2(0, 0)
   private queuedTouchActions: Record<TouchActionKey, boolean> = { interact: false, craft: false, travel: false }
@@ -151,6 +154,9 @@ class AdventureScene extends Phaser.Scene {
     this.setupInput()
     this.createHud()
     this.createMobileControls()
+    if (this.mobileControlsEnabled && this.scale.parentSize.height > this.scale.parentSize.width) {
+      this.hudExpanded = false
+    }
     this.layoutHud()
     this.layoutMobileControls()
 
@@ -421,14 +427,59 @@ class AdventureScene extends Phaser.Scene {
       backgroundColor: '#0f1a2b',
       padding: { left: 3, right: 3, top: 1, bottom: 1 },
     }).setDepth(102)
+
+    this.hudToggleButton = this.add.rectangle(GAME_WIDTH - 28, 16, 44, 20, 0x15314e, 0.9).setDepth(103)
+    this.hudToggleButton.setStrokeStyle(1, 0x8eb7da)
+    this.hudToggleButton.setInteractive()
+    this.hudToggleButton.on('pointerdown', () => {
+      this.hudExpanded = !this.hudExpanded
+      this.layoutHud()
+    })
+
+    this.hudToggleText = this.add.text(GAME_WIDTH - 28, 16, 'INV', {
+      fontFamily: 'monospace',
+      fontSize: '10px',
+      color: '#d8ecff',
+    }).setOrigin(0.5).setDepth(104)
   }
 
   private layoutHud() {
     const compact = this.mobileControlsEnabled || this.scale.parentSize.width < 900
+    const portrait = this.scale.parentSize.height > this.scale.parentSize.width
+
+    if (portrait && this.mobileControlsEnabled) {
+      this.hudToggleButton.setVisible(true).setPosition(GAME_WIDTH - 28, 16)
+      this.hudToggleText.setVisible(true).setPosition(GAME_WIDTH - 28, 16).setText(this.hudExpanded ? 'X' : 'INV')
+
+      this.islandLabel.setFontSize(13).setPosition(8, 8)
+      this.statusText.setPosition(8, 26).setFontSize(10).setWordWrapWidth(GAME_WIDTH - (this.hudExpanded ? 206 : 16))
+      this.keyboardHintText.setVisible(false)
+
+      if (this.hudExpanded) {
+        this.hudPanel.setVisible(true).setPosition(GAME_WIDTH - 94, 90).setSize(182, 160)
+        this.materialText.setVisible(true).setPosition(GAME_WIDTH - 176, 26).setFontSize(11)
+        this.craftedText.setVisible(true).setPosition(GAME_WIDTH - 176, 72).setFontSize(11)
+        this.recipeText.setVisible(true).setPosition(GAME_WIDTH - 176, 116).setFontSize(11)
+      } else {
+        this.hudPanel.setVisible(false)
+        this.materialText.setVisible(false)
+        this.craftedText.setVisible(false)
+        this.recipeText.setVisible(false)
+      }
+      return
+    }
+
+    this.hudExpanded = true
+    this.hudToggleButton.setVisible(false)
+    this.hudToggleText.setVisible(false)
+    this.hudPanel.setVisible(true)
+    this.materialText.setVisible(true)
+    this.craftedText.setVisible(true)
+    this.recipeText.setVisible(true)
 
     if (compact) {
       this.hudPanel.setPosition(GAME_WIDTH - 96, 82).setSize(186, 146)
-      this.islandLabel.setFontSize(14)
+      this.islandLabel.setFontSize(14).setPosition(12, 10)
       this.materialText.setPosition(GAME_WIDTH - 182, 18).setFontSize(11)
       this.craftedText.setPosition(GAME_WIDTH - 182, 63).setFontSize(11)
       this.recipeText.setPosition(GAME_WIDTH - 182, 104).setFontSize(11)
@@ -437,7 +488,7 @@ class AdventureScene extends Phaser.Scene {
       this.keyboardHintText.setPosition(8, GAME_HEIGHT - 18).setFontSize(9)
     } else {
       this.hudPanel.setPosition(GAME_WIDTH - 120, 92).setSize(230, 170)
-      this.islandLabel.setFontSize(16)
+      this.islandLabel.setFontSize(16).setPosition(12, 10)
       this.materialText.setPosition(GAME_WIDTH - 224, 22).setFontSize(12)
       this.craftedText.setPosition(GAME_WIDTH - 224, 76).setFontSize(12)
       this.recipeText.setPosition(GAME_WIDTH - 224, 126).setFontSize(12)
@@ -451,16 +502,18 @@ class AdventureScene extends Phaser.Scene {
     if (!this.mobileControlsEnabled || !this.joystickBaseCircle || !this.joystickThumbCircle) return
 
     const compact = this.scale.parentSize.width < 760
+    const portrait = this.scale.parentSize.height > this.scale.parentSize.width
+
     const buttonRadius = compact ? 22 : 24
     this.joystickRadius = compact ? 34 : 38
-    this.joystickBasePos.set(compact ? 68 : 78, GAME_HEIGHT - (compact ? 92 : 98))
+    this.joystickBasePos.set(compact ? 68 : 78, GAME_HEIGHT - (compact ? 86 : 98))
 
     this.joystickBaseCircle.setPosition(this.joystickBasePos.x, this.joystickBasePos.y)
     this.joystickBaseCircle.setRadius(this.joystickRadius)
     this.joystickThumbCircle.setPosition(this.joystickBasePos.x, this.joystickBasePos.y)
 
     const rightX = GAME_WIDTH - (compact ? 42 : 48)
-    const startY = GAME_HEIGHT - (compact ? 124 : 132)
+    const startY = portrait ? (compact ? GAME_HEIGHT - 190 : GAME_HEIGHT - 202) : GAME_HEIGHT - (compact ? 124 : 132)
     const gap = compact ? 36 : 40
 
     this.touchButtons.forEach((btn, i) => {
