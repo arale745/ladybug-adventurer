@@ -10,6 +10,7 @@ type ResourceNode = {
   type: ResourceType
   sprite: Phaser.Physics.Arcade.Sprite
   harvested: boolean
+  respawnAt: number
 }
 
 type ObstacleDef = {
@@ -298,11 +299,12 @@ class AdventureScene extends Phaser.Scene {
       window.addEventListener('beforeunload', () => this.saveNow())
     }
 
-    this.setStatus('Explore (E), craft (C), sail (SPACE), toggle SFX (M). Auto-save enabled.')
+    this.setStatus('Explore (E), craft (C), sail (SPACE), toggle SFX (M). Each island boosts one resource type.')
   }
 
   update() {
     this.movePlayer()
+    this.tickResourceRespawns()
 
     this.fpsTick++
     if (this.fpsTick % 12 === 0) {
@@ -316,7 +318,8 @@ class AdventureScene extends Phaser.Scene {
     if ((Phaser.Input.Keyboard.JustDown(this.travelKey) || this.consumeTouchAction('travel')) && this.isNear(this.dock, 34)) {
       const next = (this.islandIndex + 1) % this.islands.length
       this.loadIsland(next)
-      this.setStatus(`Sailed to ${this.islands[next].name}.`)
+      const focus = this.islandFocusResource(next)
+      this.setStatus(`Sailed to ${this.islands[next].name}. Bonus chance on ${focus}.`)
       this.playSfx([220, 294, 392], 0.05, 0.08, 'triangle')
       this.saveNow()
     }
@@ -948,6 +951,35 @@ class AdventureScene extends Phaser.Scene {
     return { found, total: this.questRelicKeys.length }
   }
 
+  private islandFocusResource(index: number): ResourceType {
+    return (['wood', 'stone', 'fiber'] as ResourceType[])[index % 3]
+  }
+
+  private islandRespawnMs(index: number) {
+    return [15000, 18000, 12000][index % 3]
+  }
+
+  private islandBonusChance(index: number) {
+    return [0.34, 0.4, 0.46][index % 3]
+  }
+
+  private tickResourceRespawns() {
+    const now = this.time.now
+    this.nodes.forEach((node) => {
+      if (!node.harvested || now < node.respawnAt) return
+      node.harvested = false
+      node.respawnAt = 0
+      node.sprite.enableBody(false, node.sprite.x, node.sprite.y, true, true)
+      node.sprite.setAlpha(0)
+      this.tweens.add({
+        targets: node.sprite,
+        alpha: 1,
+        duration: 220,
+        ease: 'Sine.easeOut',
+      })
+    })
+  }
+
   private loadIsland(index: number) {
     this.islandIndex = index
     this.clearMapTiles()
@@ -985,7 +1017,7 @@ class AdventureScene extends Phaser.Scene {
       sprite.setScale(2)
       sprite.setImmovable(true)
       sprite.body?.setAllowGravity(false)
-      this.nodes.push({ type: res.type, sprite, harvested: false })
+      this.nodes.push({ type: res.type, sprite, harvested: false, respawnAt: 0 })
       this.solidColliders.push(this.physics.add.collider(this.player, sprite))
 
       this.tweens.add({
@@ -1334,7 +1366,12 @@ class AdventureScene extends Phaser.Scene {
 
     node.harvested = true
     node.sprite.disableBody(true, true)
-    this.inventory[node.type] += 1
+
+    const focusResource = this.islandFocusResource(this.islandIndex)
+    const bonusChance = this.islandBonusChance(this.islandIndex)
+    const gained = node.type === focusResource && Math.random() < bonusChance ? 2 : 1
+    this.inventory[node.type] += gained
+    node.respawnAt = this.time.now + this.islandRespawnMs(this.islandIndex) + Phaser.Math.Between(-1300, 1300)
 
     const spark = this.trackWorld(this.add.circle(node.sprite.x, node.sprite.y - 8, 4, 0xfff2a2, 0.9).setDepth(40))
     this.tweens.add({
@@ -1346,7 +1383,7 @@ class AdventureScene extends Phaser.Scene {
       onComplete: () => spark.destroy(),
     })
 
-    this.setStatus(`Collected ${node.type}.`)
+    this.setStatus(`Collected ${node.type}${gained > 1 ? ' x2 (island bonus)' : ''}.`)
     this.playSfx([440, 660], 0.045, 0.06, 'square')
     this.updateHud()
     this.saveNow()
@@ -1386,11 +1423,13 @@ class AdventureScene extends Phaser.Scene {
         : ''
     this.islandLabel.setText(`Island: ${island.name}${questTag}`)
 
+    const focus = this.islandFocusResource(this.islandIndex)
     this.materialText.setText([
       `MATERIALS`,
       `wood:  ${this.inventory.wood}`,
       `stone: ${this.inventory.stone}`,
       `fiber: ${this.inventory.fiber}`,
+      `boost: ${focus}`,
     ])
 
     this.craftedText.setText([
