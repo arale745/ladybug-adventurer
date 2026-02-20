@@ -119,7 +119,7 @@ class AdventureScene extends Phaser.Scene {
   private npcLabel?: Phaser.GameObjects.Text
   private obstacleSprites: Phaser.Physics.Arcade.Sprite[] = []
   private landmarks: Array<{ def: LandmarkDef; key: string; sprite: Phaser.Physics.Arcade.Sprite; label: Phaser.GameObjects.Text }> = []
-  private encounters: Array<{ def: EncounterDef; sprite: Phaser.Physics.Arcade.Sprite; telegraphUntil: number }> = []
+  private encounters: Array<{ def: EncounterDef; sprite: Phaser.Physics.Arcade.Sprite; telegraphUntil: number; vx: number; vy: number; angle: number }> = []
   private slowUntil = 0
   private dodgeUntil = 0
   private dodgeCooldownUntil = 0
@@ -331,7 +331,7 @@ class AdventureScene extends Phaser.Scene {
   update() {
     this.movePlayer()
     this.tickResourceRespawns()
-    this.tickEncounters()
+    this.updateEncounters()
 
     this.fpsTick++
     if (this.fpsTick % 12 === 0) {
@@ -1032,6 +1032,95 @@ class AdventureScene extends Phaser.Scene {
     return [0.34, 0.4, 0.46][index % 3]
   }
 
+  private updateEncounters() {
+    const now = this.time.now
+    const pursuitSpeed = 45
+    const telegraphDist = 38
+    const turnSpeed = 0.08
+    const wanderSpeed = 25
+
+    this.encounters.forEach((encounter) => {
+      const { sprite } = encounter
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, sprite.x, sprite.y)
+
+      // Telegraph phase: bright red tint when player is close
+      if (dist < telegraphDist && now >= encounter.telegraphUntil && now >= this.encounterCooldownUntil) {
+        encounter.telegraphUntil = now + 360
+        sprite.setTint(0xff7f7f)
+        this.playSfx([280], 0.028, 0.05, 'square')
+      } else if (now >= encounter.telegraphUntil) {
+        sprite.clearTint()
+      }
+
+      // AI movement: pursue or wander based on distance
+      let targetAngle: number
+      if (now < encounter.telegraphUntil || now < this.encounterCooldownUntil) {
+        // Wander when telegraphing or on cooldown
+        targetAngle = encounter.angle + (Math.random() - 0.5) * 0.8
+      } else if (dist > 10) {
+        // Actively pursue player when ready to attack
+        targetAngle = Phaser.Math.Angle.Between(sprite.x, sprite.y, this.player.x, this.player.y)
+      } else {
+        // Too close, just wander slowly
+        targetAngle = encounter.angle + (Math.random() - 0.5) * 0.5
+      }
+
+      // Smooth turning (angular velocity cap)
+      let angleDiff = targetAngle - encounter.angle
+      while (angleDiff > Math.PI) angleDiff -= Math.PI * 2
+      while (angleDiff < -Math.PI) angleDiff += Math.PI * 2
+      encounter.angle += Phaser.Math.Clamp(angleDiff, -turnSpeed, turnSpeed)
+
+      // Calculate velocity
+      let speed = wanderSpeed
+      if (now >= encounter.telegraphUntil && now >= this.encounterCooldownUntil && dist > 10) {
+        speed = pursuitSpeed
+      }
+
+      const vx = Math.cos(encounter.angle) * speed
+      const vy = Math.sin(encounter.angle) * speed
+
+      // Update position with smooth interpolation
+      sprite.x += vx * 0.016
+      sprite.y += vy * 0.016
+
+      // Scale sprite based on direction
+      sprite.setFlipX(vx < 0)
+
+      // Check collision with player
+      const collisionDist = Phaser.Math.Distance.Between(this.player.x, this.player.y, sprite.x, sprite.y)
+      if (collisionDist < 14 && now < this.dodgeUntil) {
+        // Player dodged, give bonus
+        this.inventory.fiber += 1
+        this.setStatus('Perfect dodge! +1 fiber.')
+        this.playSfx([660, 880], 0.05, 0.07, 'triangle')
+        this.updateHud()
+        this.saveNow()
+        return
+      }
+
+      // Skip further collision processing if on cooldown
+      if (now < this.encounterCooldownUntil) return
+
+      this.encounterCooldownUntil = now + 1800
+
+      // Hit case: slow down player
+      this.slowUntil = now + 2600
+      const lootable = (Object.keys(this.inventory) as ResourceType[]).filter((k) => this.inventory[k] > 0)
+      if (lootable.length > 0) {
+        const stolen = Phaser.Utils.Array.GetRandom(lootable)
+        this.inventory[stolen] = Math.max(0, this.inventory[stolen] - 1)
+        this.setStatus(`A beetle rammed you! -1 ${stolen} and slowed for 2.5s.`)
+      } else {
+        this.setStatus('A beetle rammed you! Slowed for 2.5s.')
+      }
+
+      this.playSfx([185, 165], 0.05, 0.11, 'sawtooth')
+      this.updateHud()
+      this.saveNow()
+    })
+  }
+
   private tickResourceRespawns() {
     const now = this.time.now
     this.nodes.forEach((node) => {
@@ -1046,50 +1135,6 @@ class AdventureScene extends Phaser.Scene {
         duration: 220,
         ease: 'Sine.easeOut',
       })
-    })
-  }
-
-  private tickEncounters() {
-    const now = this.time.now
-
-    this.encounters.forEach((encounter) => {
-      const { sprite } = encounter
-      const danger = Phaser.Math.Distance.Between(this.player.x, this.player.y, sprite.x, sprite.y)
-
-      if (danger < 38 && now >= encounter.telegraphUntil && now >= this.encounterCooldownUntil) {
-        encounter.telegraphUntil = now + 360
-        sprite.setTint(0xff7f7f)
-        this.playSfx([280], 0.028, 0.05, 'square')
-      } else if (now >= encounter.telegraphUntil) {
-        sprite.clearTint()
-      }
-
-      if (danger >= 20 || now < this.encounterCooldownUntil) return
-
-      this.encounterCooldownUntil = now + 1800
-
-      if (now < this.dodgeUntil) {
-        this.inventory.fiber += 1
-        this.setStatus('Perfect dodge! +1 fiber.')
-        this.playSfx([660, 880], 0.05, 0.07, 'triangle')
-        this.updateHud()
-        this.saveNow()
-        return
-      }
-
-      this.slowUntil = now + 2600
-      const lootable = (Object.keys(this.inventory) as ResourceType[]).filter((k) => this.inventory[k] > 0)
-      if (lootable.length > 0) {
-        const stolen = Phaser.Utils.Array.GetRandom(lootable)
-        this.inventory[stolen] = Math.max(0, this.inventory[stolen] - 1)
-        this.setStatus(`A beetle rammed you! -1 ${stolen} and slowed for 2.5s.`)
-      } else {
-        this.setStatus('A beetle rammed you! Slowed for 2.5s.')
-      }
-
-      this.playSfx([185, 165], 0.05, 0.11, 'sawtooth')
-      this.updateHud()
-      this.saveNow()
     })
   }
 
@@ -1194,24 +1239,13 @@ class AdventureScene extends Phaser.Scene {
       const sprite = this.trackWorld(this.physics.add.sprite(ex, ey, 'encounter-beetle').setDepth(31))
       sprite.setScale(1.8)
       sprite.body?.setAllowGravity(false)
-      this.encounters.push({ def: encounterDef, sprite, telegraphUntil: 0 })
-
-      this.tweens.add({
-        targets: sprite,
-        x: ex + encounterDef.radius,
-        yoyo: true,
-        repeat: -1,
-        duration: 1300 + Phaser.Math.Between(0, 500),
-        ease: 'Sine.easeInOut',
-      })
-
-      this.tweens.add({
-        targets: sprite,
-        y: ey + Phaser.Math.Between(-10, 10),
-        yoyo: true,
-        repeat: -1,
-        duration: 900 + Phaser.Math.Between(0, 500),
-        ease: 'Sine.easeInOut',
+      this.encounters.push({
+        def: encounterDef,
+        sprite,
+        telegraphUntil: 0,
+        vx: (Math.random() - 0.5) * 40,
+        vy: (Math.random() - 0.5) * 40,
+        angle: Math.random() * Math.PI * 2
       })
     }
 
