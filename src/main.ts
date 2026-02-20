@@ -75,6 +75,10 @@ class AdventureScene extends Phaser.Scene {
   private hudToggleText!: Phaser.GameObjects.Text
   private hudExpanded = true
 
+  private uiCamera?: Phaser.Cameras.Scene2D.Camera
+  private uiElements: Phaser.GameObjects.GameObject[] = []
+  private worldElements: Phaser.GameObjects.GameObject[] = []
+
   private touchMove = new Phaser.Math.Vector2(0, 0)
   private queuedTouchActions: Record<TouchActionKey, boolean> = { interact: false, craft: false, travel: false }
   private joystickBasePos = new Phaser.Math.Vector2(74, GAME_HEIGHT - 96)
@@ -178,6 +182,7 @@ class AdventureScene extends Phaser.Scene {
     })
 
     this.loadIsland(0)
+    this.setupCameras()
     this.setStatus('Explore, gather (E), craft (C), sail (SPACE).')
   }
 
@@ -303,7 +308,7 @@ class AdventureScene extends Phaser.Scene {
   }
 
   private createPlayer() {
-    this.player = this.physics.add.sprite(10 * TILE + HALF_TILE, WORLD_OFFSET_Y + 6 * TILE + HALF_TILE, 'ladybug-0')
+    this.player = this.trackWorld(this.physics.add.sprite(10 * TILE + HALF_TILE, WORLD_OFFSET_Y + 6 * TILE + HALF_TILE, 'ladybug-0'))
     this.player.setScale(2)
     this.player.setCollideWorldBounds(true)
     this.player.setSize(8, 8)
@@ -319,11 +324,11 @@ class AdventureScene extends Phaser.Scene {
   }
 
   private createHotspots() {
-    this.dock = this.add.rectangle(18 * TILE + HALF_TILE, WORLD_OFFSET_Y + 6 * TILE + HALF_TILE, 28, 48, 0x8d6839).setDepth(20)
-    this.craftBench = this.add.rectangle(2 * TILE + HALF_TILE, WORLD_OFFSET_Y + 6 * TILE + HALF_TILE, 28, 28, 0x5f4529).setDepth(20)
+    this.dock = this.trackWorld(this.add.rectangle(18 * TILE + HALF_TILE, WORLD_OFFSET_Y + 6 * TILE + HALF_TILE, 28, 48, 0x8d6839).setDepth(20))
+    this.craftBench = this.trackWorld(this.add.rectangle(2 * TILE + HALF_TILE, WORLD_OFFSET_Y + 6 * TILE + HALF_TILE, 28, 28, 0x5f4529).setDepth(20))
 
-    this.add.text(1 * TILE + 6, WORLD_OFFSET_Y + 7 * TILE + 12, 'CRAFT', { fontFamily: 'monospace', fontSize: '12px', color: '#fff5d6' }).setDepth(21)
-    this.add.text(17 * TILE + 10, WORLD_OFFSET_Y + 7 * TILE + 12, 'DOCK', { fontFamily: 'monospace', fontSize: '12px', color: '#fff5d6' }).setDepth(21)
+    this.trackWorld(this.add.text(1 * TILE + 6, WORLD_OFFSET_Y + 7 * TILE + 12, 'CRAFT', { fontFamily: 'monospace', fontSize: '12px', color: '#fff5d6' }).setDepth(21))
+    this.trackWorld(this.add.text(17 * TILE + 10, WORLD_OFFSET_Y + 7 * TILE + 12, 'DOCK', { fontFamily: 'monospace', fontSize: '12px', color: '#fff5d6' }).setDepth(21))
 
     this.physics.add.existing(this.dock, true)
     this.physics.add.existing(this.craftBench, true)
@@ -366,8 +371,8 @@ class AdventureScene extends Phaser.Scene {
 
     this.mobileControlsEnabled = true
 
-    this.joystickBaseCircle = this.add.circle(this.joystickBasePos.x, this.joystickBasePos.y, this.joystickRadius, 0x20395a, 0.45).setDepth(140)
-    this.joystickThumbCircle = this.add.circle(this.joystickBasePos.x, this.joystickBasePos.y, 16, 0x77a8d8, 0.72).setDepth(141)
+    this.joystickBaseCircle = this.trackUi(this.add.circle(this.joystickBasePos.x, this.joystickBasePos.y, this.joystickRadius, 0x20395a, 0.45).setDepth(140))
+    this.joystickThumbCircle = this.trackUi(this.add.circle(this.joystickBasePos.x, this.joystickBasePos.y, 16, 0x77a8d8, 0.72).setDepth(141))
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       const dist = Phaser.Math.Distance.Between(pointer.x, pointer.y, this.joystickBasePos.x, this.joystickBasePos.y)
@@ -388,18 +393,18 @@ class AdventureScene extends Phaser.Scene {
     this.input.on('pointerupoutside', releaseStick)
 
     const makeActionButton = (label: string, color: number, key: TouchActionKey) => {
-      const circle = this.add.circle(0, 0, 24, color, 0.7).setDepth(140)
+      const circle = this.trackUi(this.add.circle(0, 0, 24, color, 0.7).setDepth(140))
       circle.setStrokeStyle(2, 0xe7f1ff, 0.75)
       circle.setInteractive(new Phaser.Geom.Circle(0, 0, 24), Phaser.Geom.Circle.Contains)
       circle.on('pointerdown', () => {
         this.queuedTouchActions[key] = true
       })
 
-      const text = this.add.text(0, 0, label, {
+      const text = this.trackUi(this.add.text(0, 0, label, {
         fontFamily: 'monospace',
         fontSize: '12px',
         color: '#ffffff',
-      }).setOrigin(0.5).setDepth(141)
+      }).setOrigin(0.5).setDepth(141))
 
       this.touchButtons.push({ key, circle, text })
     }
@@ -465,33 +470,33 @@ class AdventureScene extends Phaser.Scene {
   }
 
   private createHud() {
-    this.hudPanel = this.add.rectangle(GAME_WIDTH - 120, 92, 230, 170, 0x101d2f, 0.85)
+    this.hudPanel = this.trackUi(this.add.rectangle(GAME_WIDTH - 120, 92, 230, 170, 0x101d2f, 0.85))
     this.hudPanel.setStrokeStyle(1, 0x8eb7da)
     this.hudPanel.setDepth(100)
 
-    this.islandLabel = this.add.text(12, 10, '', { fontFamily: 'monospace', fontSize: '16px', color: '#f9f2d7' }).setDepth(101)
-    this.materialText = this.add.text(GAME_WIDTH - 224, 22, '', { fontFamily: 'monospace', fontSize: '12px', color: '#d8ecff' }).setDepth(101)
-    this.craftedText = this.add.text(GAME_WIDTH - 224, 76, '', { fontFamily: 'monospace', fontSize: '12px', color: '#d8ecff' }).setDepth(101)
-    this.recipeText = this.add.text(GAME_WIDTH - 224, 126, '', { fontFamily: 'monospace', fontSize: '12px', color: '#ffe39d' }).setDepth(101)
+    this.islandLabel = this.trackUi(this.add.text(12, 10, '', { fontFamily: 'monospace', fontSize: '16px', color: '#f9f2d7' }).setDepth(101))
+    this.materialText = this.trackUi(this.add.text(GAME_WIDTH - 224, 22, '', { fontFamily: 'monospace', fontSize: '12px', color: '#d8ecff' }).setDepth(101))
+    this.craftedText = this.trackUi(this.add.text(GAME_WIDTH - 224, 76, '', { fontFamily: 'monospace', fontSize: '12px', color: '#d8ecff' }).setDepth(101))
+    this.recipeText = this.trackUi(this.add.text(GAME_WIDTH - 224, 126, '', { fontFamily: 'monospace', fontSize: '12px', color: '#ffe39d' }).setDepth(101))
 
-    this.statusText = this.add.text(10, GAME_HEIGHT - 40, '', {
+    this.statusText = this.trackUi(this.add.text(10, GAME_HEIGHT - 40, '', {
       fontFamily: 'monospace',
       fontSize: '11px',
       color: '#ffe39d',
       backgroundColor: '#121f31',
       padding: { left: 4, right: 4, top: 2, bottom: 2 },
       wordWrap: { width: GAME_WIDTH - 20 },
-    }).setDepth(102)
+    }).setDepth(102))
 
-    this.keyboardHintText = this.add.text(10, GAME_HEIGHT - 18, 'Keys: Z/X recipe, C craft, E gather, SPACE sail', {
+    this.keyboardHintText = this.trackUi(this.add.text(10, GAME_HEIGHT - 18, 'Keys: Z/X recipe, C craft, E gather, SPACE sail', {
       fontFamily: 'monospace',
       fontSize: '10px',
       color: '#c9dfff',
       backgroundColor: '#0f1a2b',
       padding: { left: 3, right: 3, top: 1, bottom: 1 },
-    }).setDepth(102)
+    }).setDepth(102))
 
-    this.hudToggleButton = this.add.rectangle(GAME_WIDTH - 28, 16, 44, 20, 0x15314e, 0.9).setDepth(103)
+    this.hudToggleButton = this.trackUi(this.add.rectangle(GAME_WIDTH - 28, 16, 44, 20, 0x15314e, 0.9).setDepth(103))
     this.hudToggleButton.setStrokeStyle(1, 0x8eb7da)
     this.hudToggleButton.setInteractive()
     this.hudToggleButton.on('pointerdown', () => {
@@ -499,11 +504,11 @@ class AdventureScene extends Phaser.Scene {
       this.layoutHud()
     })
 
-    this.hudToggleText = this.add.text(GAME_WIDTH - 28, 16, 'INV', {
+    this.hudToggleText = this.trackUi(this.add.text(GAME_WIDTH - 28, 16, 'INV', {
       fontFamily: 'monospace',
       fontSize: '10px',
       color: '#d8ecff',
-    }).setOrigin(0.5).setDepth(104)
+    }).setOrigin(0.5).setDepth(104))
   }
 
   private layoutHud() {
@@ -606,7 +611,7 @@ class AdventureScene extends Phaser.Scene {
     for (const res of island.resources) {
       const x = res.tx * TILE + HALF_TILE
       const y = WORLD_OFFSET_Y + res.ty * TILE + HALF_TILE
-      const sprite = this.physics.add.sprite(x, y, res.type).setDepth(30)
+      const sprite = this.trackWorld(this.physics.add.sprite(x, y, res.type).setDepth(30))
       sprite.setScale(2)
       sprite.setImmovable(true)
       sprite.body?.setAllowGravity(false)
@@ -655,7 +660,7 @@ class AdventureScene extends Phaser.Scene {
         if (d < 1.0) key = 'grassTile'
         else if (d < 1.25) key = 'beachTile'
 
-        const tile = this.add.image(tx * TILE + HALF_TILE, ty * TILE + HALF_TILE, key)
+        const tile = this.trackWorld(this.add.image(tx * TILE + HALF_TILE, ty * TILE + HALF_TILE, key))
         tile.setDepth(-20)
         this.mapLayer.add(tile)
       }
@@ -759,6 +764,28 @@ class AdventureScene extends Phaser.Scene {
 
   private isNear(target: Phaser.GameObjects.Rectangle, range: number) {
     return Phaser.Math.Distance.Between(this.player.x, this.player.y, target.x, target.y) <= range
+  }
+
+  private trackUi<T extends Phaser.GameObjects.GameObject>(obj: T): T {
+    this.uiElements.push(obj)
+    if ('setScrollFactor' in obj && typeof (obj as any).setScrollFactor === 'function') {
+      ;(obj as any).setScrollFactor(0)
+    }
+    if (this.cameras.main) this.cameras.main.ignore(obj)
+    return obj
+  }
+
+  private trackWorld<T extends Phaser.GameObjects.GameObject>(obj: T): T {
+    this.worldElements.push(obj)
+    if (this.uiCamera) this.uiCamera.ignore(obj)
+    return obj
+  }
+
+  private setupCameras() {
+    this.cameras.main.ignore(this.uiElements)
+    this.uiCamera = this.cameras.add(0, 0, GAME_WIDTH, GAME_HEIGHT)
+    this.uiCamera.setRoundPixels(true)
+    this.uiCamera.ignore(this.worldElements)
   }
 
   private setStatus(message: string) {
