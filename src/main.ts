@@ -41,7 +41,7 @@ const MAP_PIXEL_HEIGHT = TILE * MAP_H
 const VIEW_WIDTH = typeof window !== 'undefined' ? window.innerWidth : 1280
 const VIEW_HEIGHT = typeof window !== 'undefined' ? window.innerHeight : 720
 const GAME_WIDTH = MAP_PIXEL_WIDTH
-const GAME_HEIGHT = Math.max(MAP_PIXEL_HEIGHT, Math.min(1200, Math.round((GAME_WIDTH * VIEW_HEIGHT) / Math.max(1, VIEW_WIDTH))))
+const GAME_HEIGHT = Math.max(MAP_PIXEL_HEIGHT, Math.min(1800, Math.round((GAME_WIDTH * VIEW_HEIGHT) / Math.max(1, VIEW_WIDTH))))
 const WORLD_OFFSET_Y = Math.floor((GAME_HEIGHT - MAP_PIXEL_HEIGHT) / 2)
 
 class AdventureScene extends Phaser.Scene {
