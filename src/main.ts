@@ -45,6 +45,7 @@ type SaveData = {
 }
 
 type TouchActionKey = 'interact' | 'craft' | 'travel'
+type Biome = 'water' | 'beach' | 'grass'
 
 const TILE = 32
 const HALF_TILE = TILE / 2
@@ -72,7 +73,7 @@ class AdventureScene extends Phaser.Scene {
   private islandIndex = 0
   private nodes: ResourceNode[] = []
   private solidColliders: Phaser.Physics.Arcade.Collider[] = []
-  private mapLayer = new Phaser.Structs.List<Phaser.GameObjects.Image>(this)
+  private mapLayer = new Phaser.Structs.List<Phaser.GameObjects.GameObject>(this)
 
   private readonly inventory: Record<ResourceType, number> = { wood: 0, stone: 0, fiber: 0 }
   private readonly crafted: Record<CraftKey, number> = { raftKit: 0, bugLantern: 0 }
@@ -118,7 +119,7 @@ class AdventureScene extends Phaser.Scene {
 
   private playerShadow?: Phaser.GameObjects.Ellipse
   private npcShadow?: Phaser.GameObjects.Ellipse
-  private waterTiles: Phaser.GameObjects.Image[] = []
+  private waterTiles: Array<{ tile: Phaser.GameObjects.Image; variant: number }> = []
 
   private activeTouches = new Map<number, Phaser.Math.Vector2>()
   private pinchActive = false
@@ -195,13 +196,7 @@ class AdventureScene extends Phaser.Scene {
     super('adventure')
   }
 
-  preload() {
-    // Use relative paths so it works on GitHub Pages base path (/ladybug-adventurer/)
-    this.load.image('waterTile-0', 'assets/kenney/tiny-town/water0.png')
-    this.load.image('waterTile-1', 'assets/kenney/tiny-town/water1.png')
-    this.load.image('beachTile', 'assets/kenney/tiny-town/beach.png')
-    this.load.image('grassTile', 'assets/kenney/tiny-town/grass.png')
-  }
+  preload() {}
 
   create() {
     this.createTextures()
@@ -278,7 +273,6 @@ class AdventureScene extends Phaser.Scene {
   private createTextures() {
     const g = this.make.graphics({ x: 0, y: 0 })
 
-    // Terrain tiles come from Kenney Tiny Town assets via preload().
     g.clear()
     g.fillStyle(0x8b6235)
     g.fillRect(0, 0, 10, 10)
@@ -368,6 +362,70 @@ class AdventureScene extends Phaser.Scene {
     ])
 
     g.destroy()
+  }
+
+  private createTerrainTextures(palette: Island['palette']) {
+    const textureKeys = [
+      'grassTile-0',
+      'grassTile-1',
+      'grassTile-2',
+      'beachTile-0',
+      'beachTile-1',
+      'waterTile-0-0',
+      'waterTile-0-1',
+      'waterTile-1-0',
+      'waterTile-1-1',
+    ]
+
+    textureKeys.forEach((key) => {
+      if (this.textures.exists(key)) this.textures.remove(key)
+    })
+
+    const g = this.make.graphics({ x: 0, y: 0 })
+
+    const makeTile = (key: string, base: number, accent: number, variantSeed: number) => {
+      g.clear()
+      g.fillStyle(base, 1)
+      g.fillRect(0, 0, TILE, TILE)
+      g.fillStyle(accent, 0.28)
+      for (let i = 0; i < 18; i++) {
+        const x = (variantSeed * 17 + i * 13) % TILE
+        const y = (variantSeed * 11 + i * 7) % TILE
+        g.fillRect(x, y, 2, 2)
+      }
+      g.generateTexture(key, TILE, TILE)
+    }
+
+    makeTile('grassTile-0', palette.grass, palette.grassDark, 1)
+    makeTile('grassTile-1', palette.grass, palette.grassDark, 2)
+    makeTile('grassTile-2', palette.grass, palette.grassDark, 3)
+
+    makeTile('beachTile-0', palette.beach, palette.beachDark, 4)
+    makeTile('beachTile-1', palette.beach, palette.beachDark, 5)
+
+    makeTile('waterTile-0-0', palette.water, palette.waterFoam, 6)
+    makeTile('waterTile-0-1', palette.water, palette.waterFoam, 7)
+
+    const brighten = (hex: number, amount: number) => {
+      const r = Phaser.Math.Clamp(((hex >> 16) & 0xff) + amount, 0, 255)
+      const gg = Phaser.Math.Clamp(((hex >> 8) & 0xff) + amount, 0, 255)
+      const b = Phaser.Math.Clamp((hex & 0xff) + amount, 0, 255)
+      return (r << 16) | (gg << 8) | b
+    }
+
+    makeTile('waterTile-1-0', brighten(palette.water, 8), brighten(palette.waterFoam, 12), 8)
+    makeTile('waterTile-1-1', brighten(palette.water, 8), brighten(palette.waterFoam, 12), 9)
+
+    g.destroy()
+  }
+
+  private tileNoise(tx: number, ty: number, seed: number) {
+    const n = Math.sin((tx + 1) * 127.1 + (ty + 1) * 311.7 + seed * 79.3) * 43758.5453
+    return n - Math.floor(n)
+  }
+
+  private pickVariant(tx: number, ty: number, count: number, seed: number) {
+    return Math.floor(this.tileNoise(tx, ty, seed) * count) % count
   }
 
   private createPlayer() {
@@ -683,6 +741,7 @@ class AdventureScene extends Phaser.Scene {
     this.clearMapTiles()
 
     const island = this.islands[index]
+    this.createTerrainTextures(island.palette)
     this.buildIslandTiles(island)
 
     this.solidColliders.forEach((c) => c.destroy())
@@ -753,32 +812,89 @@ class AdventureScene extends Phaser.Scene {
     this.updateHud()
   }
 
-  private buildIslandTiles(_island: Island) {
+  private buildIslandTiles(island: Island) {
     this.waterTiles = []
 
     const cx = MAP_W / 2
     const islandCenterY = WORLD_OFFSET_Y + MAP_PIXEL_HEIGHT / 2
     const totalRows = Math.ceil(GAME_HEIGHT / TILE)
 
+    const biomes: Biome[][] = Array.from({ length: totalRows }, () => Array.from({ length: MAP_W }, () => 'water' as Biome))
+
     for (let ty = 0; ty < totalRows; ty++) {
       for (let tx = 0; tx < MAP_W; tx++) {
         const tileCenterY = ty * TILE + HALF_TILE
         const dx = (tx + 0.5 - cx) / 8
         const dy = ((tileCenterY - islandCenterY) / TILE) / 4.8
-        const d = Math.sqrt(dx * dx + dy * dy)
+        const noise = (this.tileNoise(tx, ty, island.name.length) - 0.5) * 0.16
+        const d = Math.sqrt(dx * dx + dy * dy) + noise
 
-        let key = 'waterTile-0'
-        if (d < 1.0) key = 'grassTile'
-        else if (d < 1.25) key = 'beachTile'
+        let biome: Biome = 'water'
+        if (d < 0.98) biome = 'grass'
+        else if (d < 1.24) biome = 'beach'
 
-        const tile = this.trackWorld(this.add.image(tx * TILE + HALF_TILE, ty * TILE + HALF_TILE, key))
-        tile.setDepth(-20)
+        biomes[ty][tx] = biome
+      }
+    }
 
-        if (key === 'waterTile-0') {
-          this.waterTiles.push(tile)
+    const getBiome = (tx: number, ty: number): Biome => {
+      if (ty < 0 || ty >= totalRows || tx < 0 || tx >= MAP_W) return 'water'
+      return biomes[ty][tx]
+    }
+
+    for (let ty = 0; ty < totalRows; ty++) {
+      for (let tx = 0; tx < MAP_W; tx++) {
+        const biome = biomes[ty][tx]
+
+        let key = 'waterTile-0-0'
+        if (biome === 'grass') {
+          const variant = this.pickVariant(tx, ty, 3, 11)
+          key = `grassTile-${variant}`
+        } else if (biome === 'beach') {
+          const variant = this.pickVariant(tx, ty, 2, 17)
+          key = `beachTile-${variant}`
+        } else {
+          const variant = this.pickVariant(tx, ty, 2, 23)
+          key = `waterTile-0-${variant}`
         }
 
+        const tileX = tx * TILE + HALF_TILE
+        const tileY = ty * TILE + HALF_TILE
+        const tile = this.trackWorld(this.add.image(tileX, tileY, key))
+        tile.setDepth(-20)
         this.mapLayer.add(tile)
+
+        if (biome === 'water') {
+          const variant = Number(key.endsWith('-1'))
+          this.waterTiles.push({ tile, variant })
+        }
+
+        const top = getBiome(tx, ty - 1)
+        const right = getBiome(tx + 1, ty)
+        const bottom = getBiome(tx, ty + 1)
+        const left = getBiome(tx - 1, ty)
+
+        const addStrip = (x: number, y: number, w: number, h: number, color: number, alpha: number) => {
+          const strip = this.trackWorld(this.add.rectangle(x, y, w, h, color, alpha))
+          strip.setDepth(-19)
+          this.mapLayer.add(strip)
+        }
+
+        if (biome === 'grass') {
+          const edge = 6
+          if (top === 'beach') addStrip(tileX, tileY - HALF_TILE + edge / 2, TILE, edge, island.palette.beach, 0.42)
+          if (right === 'beach') addStrip(tileX + HALF_TILE - edge / 2, tileY, edge, TILE, island.palette.beach, 0.42)
+          if (bottom === 'beach') addStrip(tileX, tileY + HALF_TILE - edge / 2, TILE, edge, island.palette.beach, 0.42)
+          if (left === 'beach') addStrip(tileX - HALF_TILE + edge / 2, tileY, edge, TILE, island.palette.beach, 0.42)
+        }
+
+        if (biome === 'beach') {
+          const foam = 5
+          if (top === 'water') addStrip(tileX, tileY - HALF_TILE + foam / 2, TILE, foam, island.palette.waterFoam, 0.5)
+          if (right === 'water') addStrip(tileX + HALF_TILE - foam / 2, tileY, foam, TILE, island.palette.waterFoam, 0.5)
+          if (bottom === 'water') addStrip(tileX, tileY + HALF_TILE - foam / 2, TILE, foam, island.palette.waterFoam, 0.5)
+          if (left === 'water') addStrip(tileX - HALF_TILE + foam / 2, tileY, foam, TILE, island.palette.waterFoam, 0.5)
+        }
       }
     }
   }
@@ -943,12 +1059,16 @@ class AdventureScene extends Phaser.Scene {
   }
 
   private startWaterAnimation() {
+    let frame = 0
+
     this.time.addEvent({
       delay: 520,
       loop: true,
       callback: () => {
-        const toFrame = this.waterTiles.length > 0 && this.waterTiles[0].texture.key === 'waterTile-0' ? 'waterTile-1' : 'waterTile-0'
-        this.waterTiles.forEach((tile) => tile.setTexture(toFrame))
+        frame = frame === 0 ? 1 : 0
+        this.waterTiles.forEach(({ tile, variant }) => {
+          tile.setTexture(`waterTile-${frame}-${variant}`)
+        })
       },
     })
   }
