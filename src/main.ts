@@ -3,11 +3,27 @@ import Phaser from 'phaser'
 
 type ResourceType = 'wood' | 'stone' | 'fiber'
 type CraftKey = 'raftKit' | 'bugLantern'
+type ObstacleType = 'rock' | 'bush' | 'stump'
+type LandmarkType = 'chest' | 'shrine' | 'cave'
 
 type ResourceNode = {
   type: ResourceType
   sprite: Phaser.Physics.Arcade.Sprite
   harvested: boolean
+}
+
+type ObstacleDef = {
+  type: ObstacleType
+  tx: number
+  ty: number
+}
+
+type LandmarkDef = {
+  id: string
+  type: LandmarkType
+  tx: number
+  ty: number
+  title: string
 }
 
 type Island = {
@@ -21,6 +37,8 @@ type Island = {
     waterFoam: number
   }
   resources: Array<{ type: ResourceType; tx: number; ty: number }>
+  obstacles: ObstacleDef[]
+  landmarks: LandmarkDef[]
 }
 
 type Recipe = {
@@ -41,6 +59,7 @@ type SaveData = {
   crafted: Record<CraftKey, number>
   selectedRecipe: number
   quest: { lanternRequested: boolean; lanternDelivered: boolean }
+  landmarksVisited?: Record<string, boolean>
   cameraZoom?: number
 }
 
@@ -78,12 +97,15 @@ class AdventureScene extends Phaser.Scene {
   private readonly inventory: Record<ResourceType, number> = { wood: 0, stone: 0, fiber: 0 }
   private readonly crafted: Record<CraftKey, number> = { raftKit: 0, bugLantern: 0 }
   private quest = { lanternRequested: false, lanternDelivered: false }
+  private readonly landmarksVisited: Record<string, boolean> = {}
   private readonly saveKey = 'ladybug-adventurer-save-v1'
 
   private dock!: Phaser.GameObjects.Rectangle
   private craftBench!: Phaser.GameObjects.Rectangle
   private npcSprite?: Phaser.Physics.Arcade.Sprite
   private npcLabel?: Phaser.GameObjects.Text
+  private obstacleSprites: Phaser.Physics.Arcade.Sprite[] = []
+  private landmarks: Array<{ def: LandmarkDef; key: string; sprite: Phaser.Physics.Arcade.Sprite; label: Phaser.GameObjects.Text }> = []
 
   private hudPanel!: Phaser.GameObjects.Rectangle
   private islandLabel!: Phaser.GameObjects.Text
@@ -155,6 +177,18 @@ class AdventureScene extends Phaser.Scene {
         { type: 'fiber', tx: 12, ty: 7 },
         { type: 'stone', tx: 8, ty: 8 },
       ],
+      obstacles: [
+        { type: 'bush', tx: 7, ty: 5 },
+        { type: 'rock', tx: 8, ty: 5 },
+        { type: 'rock', tx: 9, ty: 5 },
+        { type: 'bush', tx: 11, ty: 5 },
+        { type: 'stump', tx: 7, ty: 7 },
+        { type: 'stump', tx: 11, ty: 7 },
+      ],
+      landmarks: [
+        { id: 'stash', type: 'chest', tx: 4, ty: 8, title: 'Starter Stash' },
+        { id: 'altar', type: 'shrine', tx: 14, ty: 4, title: 'Moss Shrine' },
+      ],
     },
     {
       name: 'Pebble Ring',
@@ -172,6 +206,18 @@ class AdventureScene extends Phaser.Scene {
         { type: 'wood', tx: 9, ty: 8 },
         { type: 'fiber', tx: 14, ty: 5 },
       ],
+      obstacles: [
+        { type: 'rock', tx: 8, ty: 4 },
+        { type: 'rock', tx: 9, ty: 4 },
+        { type: 'bush', tx: 10, ty: 4 },
+        { type: 'stump', tx: 11, ty: 4 },
+        { type: 'bush', tx: 8, ty: 8 },
+        { type: 'rock', tx: 12, ty: 8 },
+      ],
+      landmarks: [
+        { id: 'echo-cave', type: 'cave', tx: 5, ty: 6, title: 'Echo Cave' },
+        { id: 'ring-shrine', type: 'shrine', tx: 15, ty: 7, title: 'Ring Shrine' },
+      ],
     },
     {
       name: 'Sunset Atoll',
@@ -188,6 +234,18 @@ class AdventureScene extends Phaser.Scene {
         { type: 'fiber', tx: 13, ty: 6 },
         { type: 'wood', tx: 10, ty: 4 },
         { type: 'stone', tx: 10, ty: 8 },
+      ],
+      obstacles: [
+        { type: 'stump', tx: 7, ty: 4 },
+        { type: 'bush', tx: 8, ty: 4 },
+        { type: 'rock', tx: 12, ty: 4 },
+        { type: 'stump', tx: 13, ty: 4 },
+        { type: 'rock', tx: 9, ty: 8 },
+        { type: 'bush', tx: 11, ty: 8 },
+      ],
+      landmarks: [
+        { id: 'sun-cache', type: 'chest', tx: 15, ty: 4, title: 'Sun Cache' },
+        { id: 'reef-cave', type: 'cave', tx: 5, ty: 8, title: 'Reef Cave' },
       ],
     },
   ]
@@ -234,7 +292,7 @@ class AdventureScene extends Phaser.Scene {
       window.addEventListener('beforeunload', () => this.saveNow())
     }
 
-    this.setStatus('Explore, gather (E), craft (C), sail (SPACE). Auto-save enabled.')
+    this.setStatus('Explore, gather or inspect landmarks (E), craft (C), sail (SPACE). Auto-save enabled.')
   }
 
   update() {
@@ -299,6 +357,55 @@ class AdventureScene extends Phaser.Scene {
     g.fillRect(4, 5, 1, 1)
     g.fillRect(7, 5, 1, 1)
     g.generateTexture('npc', 12, 16)
+
+    g.clear()
+    g.fillStyle(0x6f7378)
+    g.fillCircle(8, 9, 6)
+    g.fillStyle(0x8a8f95)
+    g.fillCircle(6, 7, 3)
+    g.generateTexture('obstacle-rock', 16, 16)
+
+    g.clear()
+    g.fillStyle(0x4d7f3f)
+    g.fillCircle(8, 9, 6)
+    g.fillStyle(0x6ba85a)
+    g.fillCircle(6, 7, 3)
+    g.fillCircle(10, 8, 3)
+    g.generateTexture('obstacle-bush', 16, 16)
+
+    g.clear()
+    g.fillStyle(0x6d4c2e)
+    g.fillRect(6, 5, 4, 10)
+    g.fillStyle(0x8e6944)
+    g.fillRect(4, 3, 8, 4)
+    g.generateTexture('obstacle-stump', 16, 16)
+
+    g.clear()
+    g.fillStyle(0x8b6235)
+    g.fillRect(2, 5, 12, 9)
+    g.fillStyle(0xdbbd79)
+    g.fillRect(2, 5, 12, 2)
+    g.fillStyle(0xc8a24e)
+    g.fillRect(7, 8, 2, 3)
+    g.generateTexture('landmark-chest', 16, 16)
+
+    g.clear()
+    g.fillStyle(0x6686c8)
+    g.fillRect(5, 2, 6, 12)
+    g.fillStyle(0xaed0ff)
+    g.fillRect(6, 3, 4, 8)
+    g.fillStyle(0x4f6da9)
+    g.fillRect(4, 11, 8, 3)
+    g.generateTexture('landmark-shrine', 16, 16)
+
+    g.clear()
+    g.fillStyle(0x2f3d4f)
+    g.fillCircle(8, 8, 7)
+    g.fillStyle(0x111111)
+    g.fillCircle(8, 9, 4)
+    g.fillStyle(0x5b6f85)
+    g.fillRect(2, 11, 12, 3)
+    g.generateTexture('landmark-cave', 16, 16)
 
     const drawLadybug = (key: string, lines: string[]) => {
       const colors: Record<string, number> = {
@@ -753,6 +860,22 @@ class AdventureScene extends Phaser.Scene {
     this.resetTouchMove()
   }
 
+  private obstacleTexture(type: ObstacleType) {
+    if (type === 'rock') return 'obstacle-rock'
+    if (type === 'bush') return 'obstacle-bush'
+    return 'obstacle-stump'
+  }
+
+  private landmarkTexture(type: LandmarkType) {
+    if (type === 'chest') return 'landmark-chest'
+    if (type === 'shrine') return 'landmark-shrine'
+    return 'landmark-cave'
+  }
+
+  private landmarkKey(islandIndex: number, id: string) {
+    return `${islandIndex}:${id}`
+  }
+
   private loadIsland(index: number) {
     this.islandIndex = index
     this.clearMapTiles()
@@ -766,6 +889,15 @@ class AdventureScene extends Phaser.Scene {
 
     for (const node of this.nodes) node.sprite.destroy()
     this.nodes = []
+
+    this.obstacleSprites.forEach((sprite) => sprite.destroy())
+    this.obstacleSprites = []
+
+    this.landmarks.forEach((landmark) => {
+      landmark.sprite.destroy()
+      landmark.label.destroy()
+    })
+    this.landmarks = []
 
     this.npcSprite?.destroy()
     this.npcLabel?.destroy()
@@ -792,6 +924,44 @@ class AdventureScene extends Phaser.Scene {
         repeat: -1,
         ease: 'Sine.easeInOut',
       })
+    }
+
+    for (const obstacle of island.obstacles) {
+      const ox = obstacle.tx * TILE + HALF_TILE
+      const oy = WORLD_OFFSET_Y + obstacle.ty * TILE + HALF_TILE
+      const sprite = this.trackWorld(this.physics.add.sprite(ox, oy, this.obstacleTexture(obstacle.type)).setDepth(25))
+      sprite.setScale(2)
+      sprite.setImmovable(true)
+      sprite.body?.setAllowGravity(false)
+      this.obstacleSprites.push(sprite)
+      this.solidColliders.push(this.physics.add.collider(this.player, sprite))
+    }
+
+    for (const landmarkDef of island.landmarks) {
+      const lx = landmarkDef.tx * TILE + HALF_TILE
+      const ly = WORLD_OFFSET_Y + landmarkDef.ty * TILE + HALF_TILE
+      const key = this.landmarkKey(index, landmarkDef.id)
+
+      const sprite = this.trackWorld(this.physics.add.sprite(lx, ly, this.landmarkTexture(landmarkDef.type)).setDepth(28))
+      sprite.setScale(2)
+      sprite.setImmovable(true)
+      sprite.body?.setAllowGravity(false)
+
+      if (this.landmarksVisited[key]) {
+        sprite.setTint(0xb8b8b8)
+        sprite.setAlpha(0.85)
+      }
+
+      const label = this.trackWorld(this.add.text(lx - 20, ly - 24, landmarkDef.title, {
+        fontFamily: 'monospace',
+        fontSize: '9px',
+        color: '#fff5d6',
+        backgroundColor: '#1b2d44',
+        padding: { left: 2, right: 2, top: 1, bottom: 1 },
+      }).setDepth(29))
+
+      this.landmarks.push({ def: landmarkDef, key, sprite, label })
+      this.solidColliders.push(this.physics.add.collider(this.player, sprite))
     }
 
     const npc = this.npcByIsland[index]
@@ -991,7 +1161,40 @@ class AdventureScene extends Phaser.Scene {
 
   private handleInteract() {
     if (this.tryNpcInteraction()) return
+    if (this.tryLandmarkInteraction()) return
     this.harvestNearbyNode()
+  }
+
+  private tryLandmarkInteraction() {
+    const nearby = this.landmarks.find((l) => Phaser.Math.Distance.Between(this.player.x, this.player.y, l.sprite.x, l.sprite.y) < 36)
+    if (!nearby) return false
+
+    if (this.landmarksVisited[nearby.key]) {
+      if (nearby.def.type === 'chest') this.setStatus(`${nearby.def.title} is empty.`)
+      if (nearby.def.type === 'shrine') this.setStatus(`${nearby.def.title} hums softly.`)
+      if (nearby.def.type === 'cave') this.setStatus(`${nearby.def.title} echoes with distant waves.`)
+      return true
+    }
+
+    this.landmarksVisited[nearby.key] = true
+    nearby.sprite.setTint(0xb8b8b8)
+    nearby.sprite.setAlpha(0.85)
+
+    if (nearby.def.type === 'chest') {
+      this.inventory.wood += 1
+      this.inventory.stone += 1
+      this.setStatus(`${nearby.def.title}: found supplies (+1 wood, +1 stone).`)
+    } else if (nearby.def.type === 'shrine') {
+      this.inventory.fiber += 2
+      this.setStatus(`${nearby.def.title}: blessing granted (+2 fiber).`)
+    } else {
+      this.inventory.stone += 2
+      this.setStatus(`${nearby.def.title}: mined glowing ore (+2 stone).`)
+    }
+
+    this.updateHud()
+    this.saveNow()
+    return true
   }
 
   private tryNpcInteraction() {
@@ -1137,6 +1340,7 @@ class AdventureScene extends Phaser.Scene {
         crafted: { ...this.crafted },
         selectedRecipe: this.selectedRecipe,
         quest: { ...this.quest },
+        landmarksVisited: Object.keys(this.landmarksVisited).length,
         cameraZoom: this.cameras.main.zoom,
         fps: Math.round(this.game.loop.actualFps),
       }),
@@ -1172,6 +1376,12 @@ class AdventureScene extends Phaser.Scene {
         this.quest.lanternDelivered = Boolean(parsed.quest.lanternDelivered)
       }
 
+      if (parsed.landmarksVisited && typeof parsed.landmarksVisited === 'object') {
+        Object.entries(parsed.landmarksVisited).forEach(([k, v]) => {
+          this.landmarksVisited[k] = Boolean(v)
+        })
+      }
+
       if (typeof parsed.cameraZoom === 'number') {
         this.cameras.main.setZoom(Phaser.Math.Clamp(parsed.cameraZoom, 0.75, 2.25))
       }
@@ -1189,6 +1399,7 @@ class AdventureScene extends Phaser.Scene {
       crafted: { ...this.crafted },
       selectedRecipe: this.selectedRecipe,
       quest: { ...this.quest },
+      landmarksVisited: { ...this.landmarksVisited },
       cameraZoom: this.cameras.main.zoom,
     }
 
