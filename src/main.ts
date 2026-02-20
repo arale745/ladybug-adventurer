@@ -5,6 +5,7 @@ type ResourceType = 'wood' | 'stone' | 'fiber'
 type CraftKey = 'raftKit' | 'bugLantern'
 type ObstacleType = 'rock' | 'bush' | 'stump'
 type LandmarkType = 'chest' | 'shrine' | 'cave'
+type EncounterType = 'beetle'
 
 type ResourceNode = {
   type: ResourceType
@@ -27,6 +28,13 @@ type LandmarkDef = {
   title: string
 }
 
+type EncounterDef = {
+  type: EncounterType
+  tx: number
+  ty: number
+  radius: number
+}
+
 type Island = {
   name: string
   palette: {
@@ -40,6 +48,7 @@ type Island = {
   resources: Array<{ type: ResourceType; tx: number; ty: number }>
   obstacles: ObstacleDef[]
   landmarks: LandmarkDef[]
+  encounters: EncounterDef[]
 }
 
 type Recipe = {
@@ -109,6 +118,9 @@ class AdventureScene extends Phaser.Scene {
   private npcLabel?: Phaser.GameObjects.Text
   private obstacleSprites: Phaser.Physics.Arcade.Sprite[] = []
   private landmarks: Array<{ def: LandmarkDef; key: string; sprite: Phaser.Physics.Arcade.Sprite; label: Phaser.GameObjects.Text }> = []
+  private encounters: Array<{ def: EncounterDef; sprite: Phaser.Physics.Arcade.Sprite }> = []
+  private slowUntil = 0
+  private encounterCooldownUntil = 0
 
   private hudPanel!: Phaser.GameObjects.Rectangle
   private islandLabel!: Phaser.GameObjects.Text
@@ -196,6 +208,9 @@ class AdventureScene extends Phaser.Scene {
         { id: 'stash', type: 'chest', tx: 4, ty: 8, title: 'Starter Stash' },
         { id: 'altar', type: 'shrine', tx: 14, ty: 4, title: 'Moss Shrine' },
       ],
+      encounters: [
+        { type: 'beetle', tx: 9, ty: 6, radius: 22 },
+      ],
     },
     {
       name: 'Pebble Ring',
@@ -225,6 +240,9 @@ class AdventureScene extends Phaser.Scene {
         { id: 'echo-cave', type: 'cave', tx: 5, ty: 6, title: 'Echo Cave' },
         { id: 'ring-shrine', type: 'shrine', tx: 15, ty: 7, title: 'Ring Shrine' },
       ],
+      encounters: [
+        { type: 'beetle', tx: 10, ty: 6, radius: 26 },
+      ],
     },
     {
       name: 'Sunset Atoll',
@@ -253,6 +271,9 @@ class AdventureScene extends Phaser.Scene {
       landmarks: [
         { id: 'sun-cache', type: 'chest', tx: 15, ty: 4, title: 'Sun Cache' },
         { id: 'reef-cave', type: 'cave', tx: 5, ty: 8, title: 'Reef Cave' },
+      ],
+      encounters: [
+        { type: 'beetle', tx: 10, ty: 5, radius: 30 },
       ],
     },
   ]
@@ -305,6 +326,7 @@ class AdventureScene extends Phaser.Scene {
   update() {
     this.movePlayer()
     this.tickResourceRespawns()
+    this.tickEncounters()
 
     this.fpsTick++
     if (this.fpsTick % 12 === 0) {
@@ -472,6 +494,16 @@ class AdventureScene extends Phaser.Scene {
     g.fillStyle(0x5b6f85)
     g.fillRect(2, 11, 12, 3)
     g.generateTexture('landmark-cave', 16, 16)
+
+    g.clear()
+    g.fillStyle(0x1b1b1b)
+    g.fillEllipse(8, 9, 11, 9)
+    g.fillStyle(0x7b2f2f)
+    g.fillEllipse(8, 9, 8, 7)
+    g.fillStyle(0xffffff)
+    g.fillRect(6, 7, 1, 1)
+    g.fillRect(9, 7, 1, 1)
+    g.generateTexture('encounter-beetle', 16, 16)
 
     const drawLadybug = (key: string, lines: string[]) => {
       const colors: Record<string, number> = {
@@ -980,6 +1012,31 @@ class AdventureScene extends Phaser.Scene {
     })
   }
 
+  private tickEncounters() {
+    const now = this.time.now
+
+    this.encounters.forEach(({ sprite }) => {
+      const danger = Phaser.Math.Distance.Between(this.player.x, this.player.y, sprite.x, sprite.y)
+      if (danger >= 20 || now < this.encounterCooldownUntil) return
+
+      this.encounterCooldownUntil = now + 1800
+      this.slowUntil = now + 2600
+
+      const lootable = (Object.keys(this.inventory) as ResourceType[]).filter((k) => this.inventory[k] > 0)
+      if (lootable.length > 0) {
+        const stolen = Phaser.Utils.Array.GetRandom(lootable)
+        this.inventory[stolen] = Math.max(0, this.inventory[stolen] - 1)
+        this.setStatus(`A beetle rammed you! -1 ${stolen} and slowed for 2.5s.`)
+      } else {
+        this.setStatus('A beetle rammed you! Slowed for 2.5s.')
+      }
+
+      this.playSfx([185, 165], 0.05, 0.11, 'sawtooth')
+      this.updateHud()
+      this.saveNow()
+    })
+  }
+
   private loadIsland(index: number) {
     this.islandIndex = index
     this.clearMapTiles()
@@ -987,6 +1044,8 @@ class AdventureScene extends Phaser.Scene {
     const island = this.islands[index]
     this.createTerrainTextures(island.palette)
     this.buildIslandTiles(island)
+    this.slowUntil = 0
+    this.encounterCooldownUntil = 0
 
     this.solidColliders.forEach((c) => c.destroy())
     this.solidColliders = []
@@ -1002,6 +1061,9 @@ class AdventureScene extends Phaser.Scene {
       landmark.label.destroy()
     })
     this.landmarks = []
+
+    this.encounters.forEach((encounter) => encounter.sprite.destroy())
+    this.encounters = []
 
     this.npcSprite?.destroy()
     this.npcLabel?.destroy()
@@ -1066,6 +1128,33 @@ class AdventureScene extends Phaser.Scene {
 
       this.landmarks.push({ def: landmarkDef, key, sprite, label })
       this.solidColliders.push(this.physics.add.collider(this.player, sprite))
+    }
+
+    for (const encounterDef of island.encounters) {
+      const ex = encounterDef.tx * TILE + HALF_TILE
+      const ey = WORLD_OFFSET_Y + encounterDef.ty * TILE + HALF_TILE
+      const sprite = this.trackWorld(this.physics.add.sprite(ex, ey, 'encounter-beetle').setDepth(31))
+      sprite.setScale(1.8)
+      sprite.body?.setAllowGravity(false)
+      this.encounters.push({ def: encounterDef, sprite })
+
+      this.tweens.add({
+        targets: sprite,
+        x: ex + encounterDef.radius,
+        yoyo: true,
+        repeat: -1,
+        duration: 1300 + Phaser.Math.Between(0, 500),
+        ease: 'Sine.easeInOut',
+      })
+
+      this.tweens.add({
+        targets: sprite,
+        y: ey + Phaser.Math.Between(-10, 10),
+        yoyo: true,
+        repeat: -1,
+        duration: 900 + Phaser.Math.Between(0, 500),
+        ease: 'Sine.easeInOut',
+      })
     }
 
     const npc = this.npcByIsland[index]
@@ -1231,7 +1320,7 @@ class AdventureScene extends Phaser.Scene {
   }
 
   private movePlayer() {
-    const speed = 132
+    const speed = this.time.now < this.slowUntil ? 92 : 132
     let vx = 0
     let vy = 0
 
