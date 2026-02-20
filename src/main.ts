@@ -62,6 +62,13 @@ class AdventureScene extends Phaser.Scene {
   private recipeText!: Phaser.GameObjects.Text
   private statusText!: Phaser.GameObjects.Text
 
+  private touchMove = new Phaser.Math.Vector2(0, 0)
+  private queuedTouchActions = { interact: false, craft: false, travel: false }
+  private joystickBasePos = new Phaser.Math.Vector2(74, GAME_HEIGHT - 96)
+  private joystickPointerId: number | null = null
+  private joystickThumbCircle?: Phaser.GameObjects.Arc
+  private mobileControlsEnabled = false
+
   private selectedRecipe = 0
   private readonly recipes: Recipe[] = [
     { key: 'raftKit', label: 'Raft Kit', cost: { wood: 2, fiber: 2 } },
@@ -132,6 +139,7 @@ class AdventureScene extends Phaser.Scene {
     this.createHotspots()
     this.setupInput()
     this.createHud()
+    this.createMobileControls()
     this.loadIsland(0)
 
     this.setStatus('Explore, gather (E), craft (C), sail (SPACE).')
@@ -140,9 +148,9 @@ class AdventureScene extends Phaser.Scene {
   update() {
     this.movePlayer()
 
-    if (Phaser.Input.Keyboard.JustDown(this.interactKey)) this.harvestNearbyNode()
+    if (Phaser.Input.Keyboard.JustDown(this.interactKey) || this.consumeTouchAction('interact')) this.harvestNearbyNode()
 
-    if (Phaser.Input.Keyboard.JustDown(this.travelKey) && this.isNear(this.dock, 34)) {
+    if ((Phaser.Input.Keyboard.JustDown(this.travelKey) || this.consumeTouchAction('travel')) && this.isNear(this.dock, 34)) {
       const next = (this.islandIndex + 1) % this.islands.length
       this.loadIsland(next)
       this.setStatus(`Sailed to ${this.islands[next].name}.`)
@@ -157,7 +165,7 @@ class AdventureScene extends Phaser.Scene {
       this.updateHud()
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.craftKey)) this.tryCraftSelectedRecipe()
+    if (Phaser.Input.Keyboard.JustDown(this.craftKey) || this.consumeTouchAction('craft')) this.tryCraftSelectedRecipe()
   }
 
   private createTextures() {
@@ -295,6 +303,83 @@ class AdventureScene extends Phaser.Scene {
     this.prevRecipeKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Z)
   }
 
+  private createMobileControls() {
+    const coarsePointer = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+    if (!this.sys.game.device.input.touch && !coarsePointer) return
+
+    this.mobileControlsEnabled = true
+
+    const joyX = this.joystickBasePos.x
+    const joyY = this.joystickBasePos.y
+    const joyRadius = 38
+
+    this.add.circle(joyX, joyY, joyRadius, 0x20395a, 0.45).setDepth(140)
+    this.joystickThumbCircle = this.add.circle(joyX, joyY, 16, 0x77a8d8, 0.72).setDepth(141)
+
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      const dist = Phaser.Math.Distance.Between(pointer.x, pointer.y, joyX, joyY)
+      if (dist <= joyRadius * 1.5 && this.joystickPointerId === null) {
+        this.joystickPointerId = pointer.id
+        this.updateTouchMove(pointer.x, pointer.y)
+      }
+    })
+
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      if (this.joystickPointerId === pointer.id) this.updateTouchMove(pointer.x, pointer.y)
+    })
+
+    const releaseStick = (pointer: Phaser.Input.Pointer) => {
+      if (this.joystickPointerId === pointer.id) this.resetTouchMove()
+    }
+    this.input.on('pointerup', releaseStick)
+    this.input.on('pointerupoutside', releaseStick)
+
+    const makeActionButton = (x: number, y: number, label: string, color: number, key: keyof typeof this.queuedTouchActions) => {
+      const circle = this.add.circle(x, y, 24, color, 0.7).setDepth(140)
+      circle.setStrokeStyle(2, 0xe7f1ff, 0.75)
+      circle.setInteractive(new Phaser.Geom.Circle(0, 0, 24), Phaser.Geom.Circle.Contains)
+      circle.on('pointerdown', () => {
+        this.queuedTouchActions[key] = true
+      })
+
+      this.add.text(x, y, label, {
+        fontFamily: 'monospace',
+        fontSize: '12px',
+        color: '#ffffff',
+      }).setOrigin(0.5).setDepth(141)
+    }
+
+    makeActionButton(GAME_WIDTH - 48, GAME_HEIGHT - 122, 'SAIL', 0x397aab, 'travel')
+    makeActionButton(GAME_WIDTH - 48, GAME_HEIGHT - 84, 'E', 0x3d8e4c, 'interact')
+    makeActionButton(GAME_WIDTH - 48, GAME_HEIGHT - 46, 'C', 0x916340, 'craft')
+  }
+
+  private updateTouchMove(pointerX: number, pointerY: number) {
+    const joyRadius = 38
+    const dx = pointerX - this.joystickBasePos.x
+    const dy = pointerY - this.joystickBasePos.y
+    const vector = new Phaser.Math.Vector2(dx, dy)
+
+    if (vector.length() > joyRadius) {
+      vector.normalize().scale(joyRadius)
+    }
+
+    this.touchMove.set(vector.x / joyRadius, vector.y / joyRadius)
+    this.joystickThumbCircle?.setPosition(this.joystickBasePos.x + vector.x, this.joystickBasePos.y + vector.y)
+  }
+
+  private resetTouchMove() {
+    this.joystickPointerId = null
+    this.touchMove.set(0, 0)
+    this.joystickThumbCircle?.setPosition(this.joystickBasePos.x, this.joystickBasePos.y)
+  }
+
+  private consumeTouchAction(action: keyof typeof this.queuedTouchActions) {
+    const active = this.queuedTouchActions[action]
+    this.queuedTouchActions[action] = false
+    return active
+  }
+
   private createHud() {
     const panel = this.add.rectangle(GAME_WIDTH - 120, 92, 230, 170, 0x101d2f, 0.85)
     panel.setStrokeStyle(1, 0x8eb7da)
@@ -314,7 +399,7 @@ class AdventureScene extends Phaser.Scene {
       wordWrap: { width: GAME_WIDTH - 20 },
     }).setDepth(102)
 
-    this.add.text(10, GAME_HEIGHT - 18, 'Z/X recipe  C craft  E gather  SPACE sail', {
+    this.add.text(10, GAME_HEIGHT - 18, 'Keys: Z/X recipe, C craft, E gather, SPACE sail', {
       fontFamily: 'monospace',
       fontSize: '10px',
       color: '#c9dfff',
@@ -404,6 +489,11 @@ class AdventureScene extends Phaser.Scene {
     if (this.cursors.right.isDown || this.wasd.D.isDown) vx = speed
     if (this.cursors.up.isDown || this.wasd.W.isDown) vy = -speed
     if (this.cursors.down.isDown || this.wasd.S.isDown) vy = speed
+
+    if (vx === 0 && vy === 0 && this.mobileControlsEnabled) {
+      vx = this.touchMove.x * speed
+      vy = this.touchMove.y * speed
+    }
 
     this.player.setVelocity(vx, vy)
 
