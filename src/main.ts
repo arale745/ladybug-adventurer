@@ -89,6 +89,11 @@ class AdventureScene extends Phaser.Scene {
   }> = []
   private mobileControlsEnabled = false
 
+  private activeTouches = new Map<number, Phaser.Math.Vector2>()
+  private pinchActive = false
+  private pinchStartDistance = 0
+  private pinchStartZoom = 1
+
   private selectedRecipe = 0
   private readonly recipes: Recipe[] = [
     { key: 'raftKit', label: 'Raft Kit', cost: { wood: 2, fiber: 2 } },
@@ -332,6 +337,27 @@ class AdventureScene extends Phaser.Scene {
     this.craftKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.C)
     this.nextRecipeKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.X)
     this.prevRecipeKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Z)
+
+    this.input.addPointer(2)
+
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (pointer.wasTouch) {
+        this.activeTouches.set(pointer.id, new Phaser.Math.Vector2(pointer.x, pointer.y))
+        this.maybeStartPinch()
+      }
+    })
+
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      if (!this.activeTouches.has(pointer.id)) return
+      this.activeTouches.set(pointer.id, new Phaser.Math.Vector2(pointer.x, pointer.y))
+      this.updatePinchZoom()
+    })
+
+    const releaseTouch = (pointer: Phaser.Input.Pointer) => {
+      if (this.activeTouches.delete(pointer.id)) this.updatePinchZoom()
+    }
+    this.input.on('pointerup', releaseTouch)
+    this.input.on('pointerupoutside', releaseTouch)
   }
 
   private createMobileControls() {
@@ -406,6 +432,36 @@ class AdventureScene extends Phaser.Scene {
     const active = this.queuedTouchActions[action]
     this.queuedTouchActions[action] = false
     return active
+  }
+
+  private maybeStartPinch() {
+    if (this.pinchActive || this.activeTouches.size < 2) return
+
+    const touches = Array.from(this.activeTouches.values())
+    this.pinchStartDistance = Phaser.Math.Distance.Between(touches[0].x, touches[0].y, touches[1].x, touches[1].y)
+    if (this.pinchStartDistance < 10) return
+
+    this.pinchStartZoom = this.cameras.main.zoom
+    this.pinchActive = true
+  }
+
+  private updatePinchZoom() {
+    if (this.activeTouches.size < 2) {
+      this.pinchActive = false
+      return
+    }
+
+    if (!this.pinchActive) {
+      this.maybeStartPinch()
+      return
+    }
+
+    const touches = Array.from(this.activeTouches.values())
+    const currentDistance = Phaser.Math.Distance.Between(touches[0].x, touches[0].y, touches[1].x, touches[1].y)
+    if (currentDistance < 10 || this.pinchStartDistance < 10) return
+
+    const targetZoom = Phaser.Math.Clamp((currentDistance / this.pinchStartDistance) * this.pinchStartZoom, 0.75, 2.25)
+    this.cameras.main.setZoom(targetZoom)
   }
 
   private createHud() {
