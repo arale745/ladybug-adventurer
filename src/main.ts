@@ -369,12 +369,16 @@ class AdventureScene extends Phaser.Scene {
       'grassTile-0',
       'grassTile-1',
       'grassTile-2',
+      'grassTile-3',
       'beachTile-0',
       'beachTile-1',
+      'beachTile-2',
       'waterTile-0-0',
       'waterTile-0-1',
+      'waterTile-0-2',
       'waterTile-1-0',
       'waterTile-1-1',
+      'waterTile-1-2',
     ]
 
     textureKeys.forEach((key) => {
@@ -383,28 +387,40 @@ class AdventureScene extends Phaser.Scene {
 
     const g = this.make.graphics({ x: 0, y: 0 })
 
-    const makeTile = (key: string, base: number, accent: number, variantSeed: number) => {
+    const makeTile = (key: string, base: number, accent: number, variantSeed: number, grain = 18) => {
       g.clear()
       g.fillStyle(base, 1)
       g.fillRect(0, 0, TILE, TILE)
-      g.fillStyle(accent, 0.28)
-      for (let i = 0; i < 18; i++) {
+
+      g.fillStyle(accent, 0.18)
+      for (let y = 0; y < TILE; y += 4) {
+        const wobble = ((variantSeed * 7 + y * 3) % 5) - 2
+        g.fillRect(0, y + wobble, TILE, 1)
+      }
+
+      g.fillStyle(accent, 0.32)
+      for (let i = 0; i < grain; i++) {
         const x = (variantSeed * 17 + i * 13) % TILE
         const y = (variantSeed * 11 + i * 7) % TILE
-        g.fillRect(x, y, 2, 2)
+        const w = 1 + ((variantSeed + i) % 2)
+        const h = 1 + ((variantSeed + i * 2) % 2)
+        g.fillRect(x, y, w, h)
       }
       g.generateTexture(key, TILE, TILE)
     }
 
-    makeTile('grassTile-0', palette.grass, palette.grassDark, 1)
-    makeTile('grassTile-1', palette.grass, palette.grassDark, 2)
-    makeTile('grassTile-2', palette.grass, palette.grassDark, 3)
+    makeTile('grassTile-0', palette.grass, palette.grassDark, 1, 24)
+    makeTile('grassTile-1', palette.grass, palette.grassDark, 2, 22)
+    makeTile('grassTile-2', palette.grass, palette.grassDark, 3, 20)
+    makeTile('grassTile-3', palette.grass, palette.grassDark, 4, 26)
 
-    makeTile('beachTile-0', palette.beach, palette.beachDark, 4)
-    makeTile('beachTile-1', palette.beach, palette.beachDark, 5)
+    makeTile('beachTile-0', palette.beach, palette.beachDark, 5, 14)
+    makeTile('beachTile-1', palette.beach, palette.beachDark, 6, 16)
+    makeTile('beachTile-2', palette.beach, palette.beachDark, 7, 12)
 
-    makeTile('waterTile-0-0', palette.water, palette.waterFoam, 6)
-    makeTile('waterTile-0-1', palette.water, palette.waterFoam, 7)
+    makeTile('waterTile-0-0', palette.water, palette.waterFoam, 8, 16)
+    makeTile('waterTile-0-1', palette.water, palette.waterFoam, 9, 14)
+    makeTile('waterTile-0-2', palette.water, palette.waterFoam, 10, 18)
 
     const brighten = (hex: number, amount: number) => {
       const r = Phaser.Math.Clamp(((hex >> 16) & 0xff) + amount, 0, 255)
@@ -413,8 +429,9 @@ class AdventureScene extends Phaser.Scene {
       return (r << 16) | (gg << 8) | b
     }
 
-    makeTile('waterTile-1-0', brighten(palette.water, 8), brighten(palette.waterFoam, 12), 8)
-    makeTile('waterTile-1-1', brighten(palette.water, 8), brighten(palette.waterFoam, 12), 9)
+    makeTile('waterTile-1-0', brighten(palette.water, 8), brighten(palette.waterFoam, 12), 11, 16)
+    makeTile('waterTile-1-1', brighten(palette.water, 8), brighten(palette.waterFoam, 12), 12, 14)
+    makeTile('waterTile-1-2', brighten(palette.water, 8), brighten(palette.waterFoam, 12), 13, 18)
 
     g.destroy()
   }
@@ -848,13 +865,13 @@ class AdventureScene extends Phaser.Scene {
 
         let key = 'waterTile-0-0'
         if (biome === 'grass') {
-          const variant = this.pickVariant(tx, ty, 3, 11)
+          const variant = this.pickVariant(tx, ty, 4, 11)
           key = `grassTile-${variant}`
         } else if (biome === 'beach') {
-          const variant = this.pickVariant(tx, ty, 2, 17)
+          const variant = this.pickVariant(tx, ty, 3, 17)
           key = `beachTile-${variant}`
         } else {
-          const variant = this.pickVariant(tx, ty, 2, 23)
+          const variant = this.pickVariant(tx, ty, 3, 23)
           key = `waterTile-0-${variant}`
         }
 
@@ -865,7 +882,8 @@ class AdventureScene extends Phaser.Scene {
         this.mapLayer.add(tile)
 
         if (biome === 'water') {
-          const variant = Number(key.endsWith('-1'))
+          const parts = key.split('-')
+          const variant = Number(parts[parts.length - 1] ?? '0')
           this.waterTiles.push({ tile, variant })
         }
 
@@ -873,6 +891,10 @@ class AdventureScene extends Phaser.Scene {
         const right = getBiome(tx + 1, ty)
         const bottom = getBiome(tx, ty + 1)
         const left = getBiome(tx - 1, ty)
+        const topLeft = getBiome(tx - 1, ty - 1)
+        const topRight = getBiome(tx + 1, ty - 1)
+        const bottomRight = getBiome(tx + 1, ty + 1)
+        const bottomLeft = getBiome(tx - 1, ty + 1)
 
         const addStrip = (x: number, y: number, w: number, h: number, color: number, alpha: number) => {
           const strip = this.trackWorld(this.add.rectangle(x, y, w, h, color, alpha))
@@ -880,20 +902,49 @@ class AdventureScene extends Phaser.Scene {
           this.mapLayer.add(strip)
         }
 
+        const addCorner = (x: number, y: number, radius: number, color: number, alpha: number) => {
+          const corner = this.trackWorld(this.add.circle(x, y, radius, color, alpha))
+          corner.setDepth(-19)
+          this.mapLayer.add(corner)
+        }
+
+        const addBlend = (
+          targetBiome: Biome,
+          color: number,
+          edgeSize: number,
+          alpha: number,
+          cornerAlpha = alpha + 0.06,
+        ) => {
+          const touchTop = top === targetBiome
+          const touchRight = right === targetBiome
+          const touchBottom = bottom === targetBiome
+          const touchLeft = left === targetBiome
+
+          if (touchTop) addStrip(tileX, tileY - HALF_TILE + edgeSize / 2, TILE, edgeSize, color, alpha)
+          if (touchRight) addStrip(tileX + HALF_TILE - edgeSize / 2, tileY, edgeSize, TILE, color, alpha)
+          if (touchBottom) addStrip(tileX, tileY + HALF_TILE - edgeSize / 2, TILE, edgeSize, color, alpha)
+          if (touchLeft) addStrip(tileX - HALF_TILE + edgeSize / 2, tileY, edgeSize, TILE, color, alpha)
+
+          const cornerRadius = Math.max(2, Math.floor(edgeSize * 0.75))
+          if (touchTop && touchLeft) addCorner(tileX - HALF_TILE + edgeSize, tileY - HALF_TILE + edgeSize, cornerRadius, color, cornerAlpha)
+          if (touchTop && touchRight) addCorner(tileX + HALF_TILE - edgeSize, tileY - HALF_TILE + edgeSize, cornerRadius, color, cornerAlpha)
+          if (touchBottom && touchRight) addCorner(tileX + HALF_TILE - edgeSize, tileY + HALF_TILE - edgeSize, cornerRadius, color, cornerAlpha)
+          if (touchBottom && touchLeft) addCorner(tileX - HALF_TILE + edgeSize, tileY + HALF_TILE - edgeSize, cornerRadius, color, cornerAlpha)
+
+          // Fill diagonal pinholes (when only the diagonal neighbor matches).
+          const notch = Math.max(2, Math.floor(edgeSize * 0.66))
+          if (!touchTop && !touchLeft && topLeft === targetBiome) addStrip(tileX - HALF_TILE + notch / 2, tileY - HALF_TILE + notch / 2, notch, notch, color, cornerAlpha)
+          if (!touchTop && !touchRight && topRight === targetBiome) addStrip(tileX + HALF_TILE - notch / 2, tileY - HALF_TILE + notch / 2, notch, notch, color, cornerAlpha)
+          if (!touchBottom && !touchRight && bottomRight === targetBiome) addStrip(tileX + HALF_TILE - notch / 2, tileY + HALF_TILE - notch / 2, notch, notch, color, cornerAlpha)
+          if (!touchBottom && !touchLeft && bottomLeft === targetBiome) addStrip(tileX - HALF_TILE + notch / 2, tileY + HALF_TILE - notch / 2, notch, notch, color, cornerAlpha)
+        }
+
         if (biome === 'grass') {
-          const edge = 6
-          if (top === 'beach') addStrip(tileX, tileY - HALF_TILE + edge / 2, TILE, edge, island.palette.beach, 0.42)
-          if (right === 'beach') addStrip(tileX + HALF_TILE - edge / 2, tileY, edge, TILE, island.palette.beach, 0.42)
-          if (bottom === 'beach') addStrip(tileX, tileY + HALF_TILE - edge / 2, TILE, edge, island.palette.beach, 0.42)
-          if (left === 'beach') addStrip(tileX - HALF_TILE + edge / 2, tileY, edge, TILE, island.palette.beach, 0.42)
+          addBlend('beach', island.palette.beach, 6, 0.38)
         }
 
         if (biome === 'beach') {
-          const foam = 5
-          if (top === 'water') addStrip(tileX, tileY - HALF_TILE + foam / 2, TILE, foam, island.palette.waterFoam, 0.5)
-          if (right === 'water') addStrip(tileX + HALF_TILE - foam / 2, tileY, foam, TILE, island.palette.waterFoam, 0.5)
-          if (bottom === 'water') addStrip(tileX, tileY + HALF_TILE - foam / 2, TILE, foam, island.palette.waterFoam, 0.5)
-          if (left === 'water') addStrip(tileX - HALF_TILE + foam / 2, tileY, foam, TILE, island.palette.waterFoam, 0.5)
+          addBlend('water', island.palette.waterFoam, 5, 0.45)
         }
       }
     }
