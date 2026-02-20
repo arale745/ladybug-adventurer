@@ -583,19 +583,21 @@ class AdventureScene extends Phaser.Scene {
     g.destroy()
 
     const cx = MAP_W / 2
-    const cy = MAP_H / 2
+    const islandCenterY = WORLD_OFFSET_Y + MAP_PIXEL_HEIGHT / 2
+    const totalRows = Math.ceil(GAME_HEIGHT / TILE)
 
-    for (let ty = 0; ty < MAP_H; ty++) {
+    for (let ty = 0; ty < totalRows; ty++) {
       for (let tx = 0; tx < MAP_W; tx++) {
+        const tileCenterY = ty * TILE + HALF_TILE
         const dx = (tx + 0.5 - cx) / 8
-        const dy = (ty + 0.5 - cy) / 4.8
+        const dy = ((tileCenterY - islandCenterY) / TILE) / 4.8
         const d = Math.sqrt(dx * dx + dy * dy)
 
         let key = 'waterTile'
         if (d < 1.0) key = 'grassTile'
         else if (d < 1.25) key = 'beachTile'
 
-        const tile = this.add.image(tx * TILE + HALF_TILE, WORLD_OFFSET_Y + ty * TILE + HALF_TILE, key)
+        const tile = this.add.image(tx * TILE + HALF_TILE, ty * TILE + HALF_TILE, key)
         tile.setDepth(-20)
         this.mapLayer.add(tile)
       }
