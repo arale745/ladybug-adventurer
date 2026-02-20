@@ -196,10 +196,11 @@ class AdventureScene extends Phaser.Scene {
   }
 
   preload() {
-    this.load.image('waterTile-0', '/assets/kenney/tiny-town/water0.png')
-    this.load.image('waterTile-1', '/assets/kenney/tiny-town/water1.png')
-    this.load.image('beachTile', '/assets/kenney/tiny-town/beach.png')
-    this.load.image('grassTile', '/assets/kenney/tiny-town/grass.png')
+    // Use relative paths so it works on GitHub Pages base path (/ladybug-adventurer/)
+    this.load.image('waterTile-0', 'assets/kenney/tiny-town/water0.png')
+    this.load.image('waterTile-1', 'assets/kenney/tiny-town/water1.png')
+    this.load.image('beachTile', 'assets/kenney/tiny-town/beach.png')
+    this.load.image('grassTile', 'assets/kenney/tiny-town/grass.png')
   }
 
   create() {
