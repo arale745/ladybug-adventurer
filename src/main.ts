@@ -511,17 +511,23 @@ class AdventureScene extends Phaser.Scene {
     const compact = this.scale.parentSize.width < 760
     const portrait = this.scale.parentSize.height > this.scale.parentSize.width
 
-    const buttonRadius = compact ? 22 : 24
-    this.joystickRadius = compact ? 34 : 38
-    this.joystickBasePos.set(compact ? 68 : 78, GAME_HEIGHT - (compact ? 86 : 98))
+    const renderScale = Math.max(0.35, Math.min(1, this.scale.parentSize.width / GAME_WIDTH))
+    const touchBoost = 1 / renderScale
+
+    const buttonRadius = Math.round((compact ? 22 : 24) * touchBoost)
+    this.joystickRadius = Math.round((compact ? 34 : 38) * touchBoost)
+    this.joystickBasePos.set(Math.round((compact ? 68 : 78) * touchBoost), GAME_HEIGHT - Math.round((compact ? 86 : 98) * touchBoost))
 
     this.joystickBaseCircle.setPosition(this.joystickBasePos.x, this.joystickBasePos.y)
     this.joystickBaseCircle.setRadius(this.joystickRadius)
+    this.joystickThumbCircle.setRadius(Math.max(18, Math.round(this.joystickRadius * 0.45)))
     this.joystickThumbCircle.setPosition(this.joystickBasePos.x, this.joystickBasePos.y)
 
-    const rightX = GAME_WIDTH - (compact ? 42 : 48)
-    const startY = portrait ? (compact ? GAME_HEIGHT - 190 : GAME_HEIGHT - 202) : GAME_HEIGHT - (compact ? 124 : 132)
-    const gap = compact ? 36 : 40
+    const rightX = GAME_WIDTH - Math.round((compact ? 42 : 48) * touchBoost)
+    const startY = portrait
+      ? GAME_HEIGHT - Math.round((compact ? 190 : 202) * touchBoost)
+      : GAME_HEIGHT - Math.round((compact ? 124 : 132) * touchBoost)
+    const gap = Math.round((compact ? 36 : 40) * touchBoost)
 
     this.touchButtons.forEach((btn, i) => {
       const y = startY + i * gap
@@ -529,7 +535,7 @@ class AdventureScene extends Phaser.Scene {
       btn.circle.setPosition(rightX, y)
       btn.circle.setInteractive(new Phaser.Geom.Circle(0, 0, buttonRadius), Phaser.Geom.Circle.Contains)
       btn.text.setPosition(rightX, y)
-      btn.text.setFontSize(compact ? '10px' : '12px')
+      btn.text.setFontSize(`${Math.round((compact ? 10 : 12) * touchBoost)}px`)
     })
 
     this.resetTouchMove()
