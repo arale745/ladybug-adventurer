@@ -30,6 +30,16 @@ npm install
 npm run dev
 ```
 
+## Deploy to GitHub Pages
+
+This repo includes a Pages workflow (`.github/workflows/deploy-pages.yml`).
+
+Expected URL after first successful deploy:
+
+`https://arale745.github.io/ladybug-adventurer/`
+
+> Note: GitHub Pages for private repos depends on your GitHub plan. If deploy fails due to repo visibility, make it public or use Tailscale Funnel.
+
 ## Share publicly with Tailscale Funnel
 
 ```bash
