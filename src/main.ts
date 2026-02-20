@@ -159,6 +159,7 @@ class AdventureScene extends Phaser.Scene {
     { name: 'Tomo', tx: 15, ty: 5 },
     { name: 'Nori', tx: 10, ty: 9 },
   ]
+  private readonly questRelicKeys = ['0:altar', '1:echo-cave', '2:sun-cache']
 
   private readonly islands: Island[] = [
     {
@@ -876,6 +877,11 @@ class AdventureScene extends Phaser.Scene {
     return `${islandIndex}:${id}`
   }
 
+  private questRelicProgress() {
+    const found = this.questRelicKeys.filter((key) => this.landmarksVisited[key]).length
+    return { found, total: this.questRelicKeys.length }
+  }
+
   private loadIsland(index: number) {
     this.islandIndex = index
     this.clearMapTiles()
@@ -1192,6 +1198,11 @@ class AdventureScene extends Phaser.Scene {
       this.setStatus(`${nearby.def.title}: mined glowing ore (+2 stone).`)
     }
 
+    if (this.quest.lanternRequested && !this.quest.lanternDelivered && this.questRelicKeys.includes(nearby.key)) {
+      const progress = this.questRelicProgress()
+      this.setStatus(`${nearby.def.title}: relic attuned (${progress.found}/${progress.total}).`)
+    }
+
     this.updateHud()
     this.saveNow()
     return true
@@ -1207,23 +1218,31 @@ class AdventureScene extends Phaser.Scene {
 
     if (!this.quest.lanternRequested) {
       this.quest.lanternRequested = true
-      this.setStatus(`${npcName}: Can you craft a Bug Lantern? Bring it back to me.`)
+      this.setStatus(`${npcName}: attune three relics (Moss Shrine, Echo Cave, Sun Cache), then bring me a Bug Lantern.`)
+      this.updateHud()
       this.saveNow()
       return true
     }
 
     if (!this.quest.lanternDelivered) {
+      const progress = this.questRelicProgress()
+      if (progress.found < progress.total) {
+        this.setStatus(`${npcName}: relics attuned ${progress.found}/${progress.total}. Keep exploring.`)
+        return true
+      }
+
       if (this.crafted.bugLantern > 0) {
         this.crafted.bugLantern -= 1
-        this.inventory.fiber += 2
+        this.inventory.fiber += 3
+        this.crafted.raftKit += 1
         this.quest.lanternDelivered = true
-        this.setStatus(`${npcName}: Amazing! Reward: +2 fiber. Quest complete.`)
+        this.setStatus(`${npcName}: Perfect! Reward: +3 fiber and +1 Raft Kit. Quest complete.`)
         this.updateHud()
         this.saveNow()
         return true
       }
 
-      this.setStatus(`${npcName}: I still need a Bug Lantern.`)
+      this.setStatus(`${npcName}: Nice relic work. Craft a Bug Lantern and bring it here.`)
       return true
     }
 
@@ -1287,7 +1306,12 @@ class AdventureScene extends Phaser.Scene {
 
   private updateHud() {
     const island = this.islands[this.islandIndex]
-    const questTag = this.quest.lanternDelivered ? ' | Quest: done' : this.quest.lanternRequested ? ' | Quest: active' : ''
+    const relic = this.questRelicProgress()
+    const questTag = this.quest.lanternDelivered
+      ? ' | Quest: done'
+      : this.quest.lanternRequested
+        ? ` | Quest: relics ${relic.found}/${relic.total}`
+        : ''
     this.islandLabel.setText(`Island: ${island.name}${questTag}`)
 
     this.materialText.setText([
