@@ -29,7 +29,8 @@ type Recipe = {
   cost: Partial<Record<ResourceType, number>>
 }
 
-const TILE = 16
+const TILE = 32
+const HALF_TILE = TILE / 2
 const MAP_W = 20
 const MAP_H = 12
 const GAME_WIDTH = TILE * MAP_W
@@ -141,7 +142,7 @@ class AdventureScene extends Phaser.Scene {
 
     if (Phaser.Input.Keyboard.JustDown(this.interactKey)) this.harvestNearbyNode()
 
-    if (Phaser.Input.Keyboard.JustDown(this.travelKey) && this.isNear(this.dock, 18)) {
+    if (Phaser.Input.Keyboard.JustDown(this.travelKey) && this.isNear(this.dock, 34)) {
       const next = (this.islandIndex + 1) % this.islands.length
       this.loadIsland(next)
       this.setStatus(`Sailed to ${this.islands[next].name}.`)
@@ -163,13 +164,14 @@ class AdventureScene extends Phaser.Scene {
     const g = this.make.graphics({ x: 0, y: 0 })
 
     const makeTile = (key: string, base: number, dot: number) => {
+      const speck = Math.max(2, Math.floor(TILE / 8))
       g.clear()
       g.fillStyle(base)
       g.fillRect(0, 0, TILE, TILE)
       g.fillStyle(dot)
-      g.fillRect(2, 2, 2, 2)
-      g.fillRect(11, 5, 2, 2)
-      g.fillRect(7, 11, 2, 2)
+      g.fillRect(2, 2, speck, speck)
+      g.fillRect(TILE - 7, Math.floor(TILE * 0.3), speck, speck)
+      g.fillRect(Math.floor(TILE * 0.45), TILE - 6, speck, speck)
       g.generateTexture(key, TILE, TILE)
     }
 
@@ -207,17 +209,18 @@ class AdventureScene extends Phaser.Scene {
   }
 
   private createPlayer() {
-    this.player = this.physics.add.sprite(10 * TILE + 8, 6 * TILE + 8, 'ladybug')
+    this.player = this.physics.add.sprite(10 * TILE + HALF_TILE, 6 * TILE + HALF_TILE, 'ladybug')
+    this.player.setScale(2)
     this.player.setCollideWorldBounds(true)
     this.player.setSize(8, 8)
   }
 
   private createHotspots() {
-    this.dock = this.add.rectangle(18 * TILE + 8, 6 * TILE + 8, 14, 24, 0x8d6839).setDepth(20)
-    this.craftBench = this.add.rectangle(2 * TILE + 8, 6 * TILE + 8, 14, 14, 0x5f4529).setDepth(20)
+    this.dock = this.add.rectangle(18 * TILE + HALF_TILE, 6 * TILE + HALF_TILE, 28, 48, 0x8d6839).setDepth(20)
+    this.craftBench = this.add.rectangle(2 * TILE + HALF_TILE, 6 * TILE + HALF_TILE, 28, 28, 0x5f4529).setDepth(20)
 
-    this.add.text(1 * TILE + 3, 7 * TILE + 13, 'CRAFT', { fontFamily: 'monospace', fontSize: '7px', color: '#fff5d6' }).setDepth(21)
-    this.add.text(17 * TILE + 9, 7 * TILE + 13, 'DOCK', { fontFamily: 'monospace', fontSize: '7px', color: '#fff5d6' }).setDepth(21)
+    this.add.text(1 * TILE + 6, 7 * TILE + 12, 'CRAFT', { fontFamily: 'monospace', fontSize: '12px', color: '#fff5d6' }).setDepth(21)
+    this.add.text(17 * TILE + 10, 7 * TILE + 12, 'DOCK', { fontFamily: 'monospace', fontSize: '12px', color: '#fff5d6' }).setDepth(21)
 
     this.physics.add.existing(this.dock, true)
     this.physics.add.existing(this.craftBench, true)
@@ -234,21 +237,21 @@ class AdventureScene extends Phaser.Scene {
   }
 
   private createHud() {
-    const panel = this.add.rectangle(244, 44, 146, 74, 0x101d2f, 0.85)
+    const panel = this.add.rectangle(GAME_WIDTH - 108, 70, 208, 132, 0x101d2f, 0.85)
     panel.setStrokeStyle(1, 0x8eb7da)
     panel.setDepth(100)
 
-    this.islandLabel = this.add.text(8, 6, '', { fontFamily: 'monospace', fontSize: '9px', color: '#f9f2d7' }).setDepth(101)
-    this.materialText = this.add.text(176, 14, '', { fontFamily: 'monospace', fontSize: '8px', color: '#d8ecff' }).setDepth(101)
-    this.craftedText = this.add.text(176, 32, '', { fontFamily: 'monospace', fontSize: '8px', color: '#d8ecff' }).setDepth(101)
-    this.recipeText = this.add.text(176, 50, '', { fontFamily: 'monospace', fontSize: '8px', color: '#ffe39d' }).setDepth(101)
+    this.islandLabel = this.add.text(12, 10, '', { fontFamily: 'monospace', fontSize: '16px', color: '#f9f2d7' }).setDepth(101)
+    this.materialText = this.add.text(GAME_WIDTH - 205, 22, '', { fontFamily: 'monospace', fontSize: '13px', color: '#d8ecff' }).setDepth(101)
+    this.craftedText = this.add.text(GAME_WIDTH - 205, 56, '', { fontFamily: 'monospace', fontSize: '13px', color: '#d8ecff' }).setDepth(101)
+    this.recipeText = this.add.text(GAME_WIDTH - 205, 92, '', { fontFamily: 'monospace', fontSize: '13px', color: '#ffe39d' }).setDepth(101)
 
-    this.statusText = this.add.text(8, GAME_HEIGHT - 13, '', {
+    this.statusText = this.add.text(10, GAME_HEIGHT - 24, '', {
       fontFamily: 'monospace',
-      fontSize: '8px',
+      fontSize: '12px',
       color: '#ffe39d',
       backgroundColor: '#121f31',
-      padding: { left: 3, right: 3, top: 1, bottom: 1 },
+      padding: { left: 4, right: 4, top: 2, bottom: 2 },
     }).setDepth(102)
   }
 
@@ -263,15 +266,16 @@ class AdventureScene extends Phaser.Scene {
     this.nodes = []
 
     for (const res of island.resources) {
-      const x = res.tx * TILE + 8
-      const y = res.ty * TILE + 8
+      const x = res.tx * TILE + HALF_TILE
+      const y = res.ty * TILE + HALF_TILE
       const sprite = this.physics.add.sprite(x, y, res.type).setDepth(30)
+      sprite.setScale(2)
       sprite.setImmovable(true)
       sprite.body?.setAllowGravity(false)
       this.nodes.push({ type: res.type, sprite, harvested: false })
     }
 
-    this.player.setPosition(10 * TILE + 8, 6 * TILE + 8)
+    this.player.setPosition(10 * TILE + HALF_TILE, 6 * TILE + HALF_TILE)
     this.updateHud()
   }
 
@@ -282,13 +286,14 @@ class AdventureScene extends Phaser.Scene {
 
     const g = this.make.graphics({ x: 0, y: 0 })
     const drawTile = (key: string, base: number, dot: number) => {
+      const speck = Math.max(2, Math.floor(TILE / 8))
       g.clear()
       g.fillStyle(base)
       g.fillRect(0, 0, TILE, TILE)
       g.fillStyle(dot)
-      g.fillRect(2, 2, 2, 2)
-      g.fillRect(11, 5, 2, 2)
-      g.fillRect(7, 11, 2, 2)
+      g.fillRect(2, 2, speck, speck)
+      g.fillRect(TILE - 7, Math.floor(TILE * 0.3), speck, speck)
+      g.fillRect(Math.floor(TILE * 0.45), TILE - 6, speck, speck)
       g.generateTexture(key, TILE, TILE)
     }
 
@@ -310,7 +315,7 @@ class AdventureScene extends Phaser.Scene {
         if (d < 1.0) key = 'grassTile'
         else if (d < 1.25) key = 'beachTile'
 
-        const tile = this.add.image(tx * TILE + 8, ty * TILE + 8, key)
+        const tile = this.add.image(tx * TILE + HALF_TILE, ty * TILE + HALF_TILE, key)
         tile.setDepth(-20)
         this.mapLayer.add(tile)
       }
@@ -323,7 +328,7 @@ class AdventureScene extends Phaser.Scene {
   }
 
   private movePlayer() {
-    const speed = 66
+    const speed = 132
     let vx = 0
     let vy = 0
 
@@ -336,7 +341,7 @@ class AdventureScene extends Phaser.Scene {
   }
 
   private harvestNearbyNode() {
-    const node = this.nodes.find((n) => !n.harvested && Phaser.Math.Distance.Between(this.player.x, this.player.y, n.sprite.x, n.sprite.y) < 16)
+    const node = this.nodes.find((n) => !n.harvested && Phaser.Math.Distance.Between(this.player.x, this.player.y, n.sprite.x, n.sprite.y) < 26)
     if (!node) {
       this.setStatus('No resource nearby. Move close and press E.')
       return
@@ -350,7 +355,7 @@ class AdventureScene extends Phaser.Scene {
   }
 
   private tryCraftSelectedRecipe() {
-    if (!this.isNear(this.craftBench, 20)) {
+    if (!this.isNear(this.craftBench, 34)) {
       this.setStatus('Stand near the craft bench to craft.')
       return
     }
