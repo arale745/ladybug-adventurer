@@ -113,6 +113,10 @@ class AdventureScene extends Phaser.Scene {
   }> = []
   private mobileControlsEnabled = false
 
+  private playerShadow?: Phaser.GameObjects.Ellipse
+  private npcShadow?: Phaser.GameObjects.Ellipse
+  private waterTiles: Phaser.GameObjects.Image[] = []
+
   private activeTouches = new Map<number, Phaser.Math.Vector2>()
   private pinchActive = false
   private pinchStartDistance = 0
@@ -210,6 +214,7 @@ class AdventureScene extends Phaser.Scene {
     this.loadSave()
     this.loadIsland(this.islandIndex)
     this.setupCameras()
+    this.startWaterAnimation()
 
     this.time.addEvent({
       delay: 15000,
@@ -254,19 +259,20 @@ class AdventureScene extends Phaser.Scene {
   private createTextures() {
     const g = this.make.graphics({ x: 0, y: 0 })
 
-    const makeTile = (key: string, base: number, dot: number) => {
+    const makeTile = (key: string, base: number, dot: number, phase = 0) => {
       const speck = Math.max(2, Math.floor(TILE / 8))
       g.clear()
       g.fillStyle(base)
       g.fillRect(0, 0, TILE, TILE)
       g.fillStyle(dot)
-      g.fillRect(2, 2, speck, speck)
-      g.fillRect(TILE - 7, Math.floor(TILE * 0.3), speck, speck)
-      g.fillRect(Math.floor(TILE * 0.45), TILE - 6, speck, speck)
+      g.fillRect(2 + phase, 2, speck, speck)
+      g.fillRect(TILE - 7 - phase, Math.floor(TILE * 0.3), speck, speck)
+      g.fillRect(Math.floor(TILE * 0.45), TILE - 6 - phase, speck, speck)
       g.generateTexture(key, TILE, TILE)
     }
 
-    makeTile('waterTile', 0x2f6798, 0x5f99c9)
+    makeTile('waterTile-0', 0x2f6798, 0x5f99c9, 0)
+    makeTile('waterTile-1', 0x2f6798, 0x79abd8, 1)
     makeTile('beachTile', 0xe2cc8d, 0xcdb579)
     makeTile('grassTile', 0x6fbf66, 0x518f49)
 
@@ -362,6 +368,8 @@ class AdventureScene extends Phaser.Scene {
   }
 
   private createPlayer() {
+    this.playerShadow = this.trackWorld(this.add.ellipse(10 * TILE + HALF_TILE, WORLD_OFFSET_Y + 6 * TILE + HALF_TILE + 10, 20, 8, 0x000000, 0.25).setDepth(19))
+
     this.player = this.trackWorld(this.physics.add.sprite(10 * TILE + HALF_TILE, WORLD_OFFSET_Y + 6 * TILE + HALF_TILE, 'ladybug-0'))
     this.player.setScale(2)
     this.player.setCollideWorldBounds(true)
@@ -668,8 +676,10 @@ class AdventureScene extends Phaser.Scene {
 
     this.npcSprite?.destroy()
     this.npcLabel?.destroy()
+    this.npcShadow?.destroy()
     this.npcSprite = undefined
     this.npcLabel = undefined
+    this.npcShadow = undefined
 
     for (const res of island.resources) {
       const x = res.tx * TILE + HALF_TILE
@@ -679,12 +689,22 @@ class AdventureScene extends Phaser.Scene {
       sprite.setImmovable(true)
       sprite.body?.setAllowGravity(false)
       this.nodes.push({ type: res.type, sprite, harvested: false })
+
+      this.tweens.add({
+        targets: sprite,
+        y: y - 3,
+        duration: 1100 + Math.floor(Math.random() * 500),
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      })
     }
 
     const npc = this.npcByIsland[index]
     if (npc) {
       const npcX = npc.tx * TILE + HALF_TILE
       const npcY = WORLD_OFFSET_Y + npc.ty * TILE + HALF_TILE
+      this.npcShadow = this.trackWorld(this.add.ellipse(npcX, npcY + 12, 20, 8, 0x000000, 0.24).setDepth(27))
       this.npcSprite = this.trackWorld(this.physics.add.sprite(npcX, npcY, 'npc').setDepth(28))
       this.npcSprite.setScale(2)
       this.npcSprite.setImmovable(true)
@@ -697,34 +717,53 @@ class AdventureScene extends Phaser.Scene {
         backgroundColor: '#1b2d44',
         padding: { left: 2, right: 2, top: 1, bottom: 1 },
       }).setDepth(29))
+
+      this.tweens.add({
+        targets: [this.npcSprite, this.npcLabel],
+        y: '-=2',
+        duration: 1400,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      })
     }
 
     this.player.setPosition(10 * TILE + HALF_TILE, WORLD_OFFSET_Y + 6 * TILE + HALF_TILE)
+    this.playerShadow?.setPosition(this.player.x, this.player.y + 10)
     this.updateHud()
   }
 
   private buildIslandTiles(island: Island) {
-    this.textures.remove('waterTile')
+    this.textures.remove('waterTile-0')
+    this.textures.remove('waterTile-1')
     this.textures.remove('beachTile')
     this.textures.remove('grassTile')
 
     const g = this.make.graphics({ x: 0, y: 0 })
-    const drawTile = (key: string, base: number, dot: number) => {
+    const drawTile = (key: string, base: number, dot: number, phase = 0) => {
       const speck = Math.max(2, Math.floor(TILE / 8))
       g.clear()
       g.fillStyle(base)
       g.fillRect(0, 0, TILE, TILE)
       g.fillStyle(dot)
-      g.fillRect(2, 2, speck, speck)
-      g.fillRect(TILE - 7, Math.floor(TILE * 0.3), speck, speck)
-      g.fillRect(Math.floor(TILE * 0.45), TILE - 6, speck, speck)
+      g.fillRect(2 + phase, 2, speck, speck)
+      g.fillRect(TILE - 7 - phase, Math.floor(TILE * 0.3), speck, speck)
+      g.fillRect(Math.floor(TILE * 0.45), TILE - 6 - phase, speck, speck)
       g.generateTexture(key, TILE, TILE)
     }
 
-    drawTile('waterTile', island.palette.water, island.palette.waterFoam)
+    drawTile('waterTile-0', island.palette.water, island.palette.waterFoam, 0)
+    drawTile('waterTile-1', island.palette.water, Phaser.Display.Color.Interpolate.ColorWithColor(
+      Phaser.Display.Color.ValueToColor(island.palette.waterFoam),
+      Phaser.Display.Color.ValueToColor(0xffffff),
+      100,
+      28,
+    ).color, 1)
     drawTile('beachTile', island.palette.beach, island.palette.beachDark)
     drawTile('grassTile', island.palette.grass, island.palette.grassDark)
     g.destroy()
+
+    this.waterTiles = []
 
     const cx = MAP_W / 2
     const islandCenterY = WORLD_OFFSET_Y + MAP_PIXEL_HEIGHT / 2
@@ -737,13 +776,14 @@ class AdventureScene extends Phaser.Scene {
         const dy = ((tileCenterY - islandCenterY) / TILE) / 4.8
         const d = Math.sqrt(dx * dx + dy * dy)
 
-        let key = 'waterTile'
+        let key = 'waterTile-0'
         if (d < 1.0) key = 'grassTile'
         else if (d < 1.25) key = 'beachTile'
 
         const tile = this.trackWorld(this.add.image(tx * TILE + HALF_TILE, ty * TILE + HALF_TILE, key))
         tile.setDepth(-20)
         this.mapLayer.add(tile)
+        if (key === 'waterTile-0') this.waterTiles.push(tile)
       }
     }
   }
@@ -751,6 +791,7 @@ class AdventureScene extends Phaser.Scene {
   private clearMapTiles() {
     this.mapLayer.list.forEach((tile) => tile.destroy())
     this.mapLayer.removeAll()
+    this.waterTiles = []
   }
 
   private movePlayer() {
@@ -778,6 +819,11 @@ class AdventureScene extends Phaser.Scene {
     } else {
       this.player.anims.stop()
       this.player.setTexture('ladybug-0')
+    }
+
+    if (this.playerShadow) {
+      this.playerShadow.setPosition(this.player.x, this.player.y + 10)
+      this.playerShadow.setScale(moving ? 1.1 : 1)
     }
   }
 
@@ -835,6 +881,17 @@ class AdventureScene extends Phaser.Scene {
     node.harvested = true
     node.sprite.disableBody(true, true)
     this.inventory[node.type] += 1
+
+    const spark = this.trackWorld(this.add.circle(node.sprite.x, node.sprite.y - 8, 4, 0xfff2a2, 0.9).setDepth(40))
+    this.tweens.add({
+      targets: spark,
+      y: spark.y - 16,
+      alpha: 0,
+      scale: 1.8,
+      duration: 260,
+      onComplete: () => spark.destroy(),
+    })
+
     this.setStatus(`Collected ${node.type}.`)
     this.updateHud()
     this.saveNow()
@@ -888,6 +945,17 @@ class AdventureScene extends Phaser.Scene {
         .join(' + ')
       return `${marker} ${r.label} (${cost})`
     }))
+  }
+
+  private startWaterAnimation() {
+    this.time.addEvent({
+      delay: 520,
+      loop: true,
+      callback: () => {
+        const toFrame = this.waterTiles.length > 0 && this.waterTiles[0].texture.key === 'waterTile-0' ? 'waterTile-1' : 'waterTile-0'
+        this.waterTiles.forEach((tile) => tile.setTexture(toFrame))
+      },
+    })
   }
 
   private loadSave() {
