@@ -60,6 +60,7 @@ type SaveData = {
   selectedRecipe: number
   quest: { lanternRequested: boolean; lanternDelivered: boolean }
   landmarksVisited?: Record<string, boolean>
+  sfxEnabled?: boolean
   cameraZoom?: number
 }
 
@@ -86,6 +87,7 @@ class AdventureScene extends Phaser.Scene {
   private interactKey!: Phaser.Input.Keyboard.Key
   private travelKey!: Phaser.Input.Keyboard.Key
   private craftKey!: Phaser.Input.Keyboard.Key
+  private soundToggleKey!: Phaser.Input.Keyboard.Key
   private nextRecipeKey!: Phaser.Input.Keyboard.Key
   private prevRecipeKey!: Phaser.Input.Keyboard.Key
 
@@ -119,6 +121,9 @@ class AdventureScene extends Phaser.Scene {
   private fpsText!: Phaser.GameObjects.Text
   private hudExpanded = true
   private fpsTick = 0
+  private sfxEnabled = true
+  private audioCtx?: AudioContext
+  private audioUnlocked = false
 
   private uiCamera?: Phaser.Cameras.Scene2D.Camera
   private uiElements: Phaser.GameObjects.GameObject[] = []
@@ -293,7 +298,7 @@ class AdventureScene extends Phaser.Scene {
       window.addEventListener('beforeunload', () => this.saveNow())
     }
 
-    this.setStatus('Explore, gather or inspect landmarks (E), craft (C), sail (SPACE). Auto-save enabled.')
+    this.setStatus('Explore (E), craft (C), sail (SPACE), toggle SFX (M). Auto-save enabled.')
   }
 
   update() {
@@ -312,6 +317,7 @@ class AdventureScene extends Phaser.Scene {
       const next = (this.islandIndex + 1) % this.islands.length
       this.loadIsland(next)
       this.setStatus(`Sailed to ${this.islands[next].name}.`)
+      this.playSfx([220, 294, 392], 0.05, 0.08, 'triangle')
       this.saveNow()
     }
 
@@ -327,6 +333,62 @@ class AdventureScene extends Phaser.Scene {
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.craftKey) || this.consumeTouchAction('craft')) this.tryCraftSelectedRecipe()
+
+    if (Phaser.Input.Keyboard.JustDown(this.soundToggleKey)) {
+      this.sfxEnabled = !this.sfxEnabled
+      this.setStatus(`SFX ${this.sfxEnabled ? 'enabled' : 'muted'} (toggle: M).`)
+      if (this.sfxEnabled) this.playSfx([523], 0.04, 0.06, 'square')
+      this.saveNow()
+    }
+  }
+
+  private createAudioContext() {
+    if (typeof window === 'undefined') return undefined
+    if (!this.audioCtx) {
+      const Ctx = window.AudioContext || (window as any).webkitAudioContext
+      if (!Ctx) return undefined
+      this.audioCtx = new Ctx()
+    }
+    return this.audioCtx
+  }
+
+  private unlockAudio() {
+    const ctx = this.createAudioContext()
+    if (!ctx) return
+    if (ctx.state === 'suspended') {
+      void ctx.resume().then(() => {
+        this.audioUnlocked = true
+      })
+      return
+    }
+    this.audioUnlocked = true
+  }
+
+  private playSfx(
+    notes: number[],
+    volume = 0.05,
+    noteDuration = 0.08,
+    wave: OscillatorType = 'square',
+  ) {
+    if (!this.sfxEnabled || notes.length === 0) return
+    const ctx = this.createAudioContext()
+    if (!ctx || !this.audioUnlocked || ctx.state !== 'running') return
+
+    const start = ctx.currentTime + 0.01
+    const gain = ctx.createGain()
+    gain.gain.setValueAtTime(0, start)
+    gain.gain.linearRampToValueAtTime(volume, start + 0.01)
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + notes.length * noteDuration + 0.04)
+    gain.connect(ctx.destination)
+
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator()
+      osc.type = wave
+      osc.frequency.setValueAtTime(freq, start + i * noteDuration)
+      osc.connect(gain)
+      osc.start(start + i * noteDuration)
+      osc.stop(start + (i + 1) * noteDuration + 0.02)
+    })
   }
 
   private createTextures() {
@@ -588,12 +650,16 @@ class AdventureScene extends Phaser.Scene {
     this.interactKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.E)
     this.travelKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
     this.craftKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.C)
+    this.soundToggleKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.M)
     this.nextRecipeKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.X)
     this.prevRecipeKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.Z)
 
     this.input.addPointer(2)
 
+    this.input.keyboard?.on('keydown', () => this.unlockAudio())
+
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      this.unlockAudio()
       if (pointer.wasTouch) {
         this.activeTouches.set(pointer.id, new Phaser.Math.Vector2(pointer.x, pointer.y))
         this.maybeStartPinch()
@@ -739,7 +805,7 @@ class AdventureScene extends Phaser.Scene {
       wordWrap: { width: GAME_WIDTH - 20 },
     }).setDepth(102))
 
-    this.keyboardHintText = this.trackUi(this.add.text(10, GAME_HEIGHT - 18, 'Keys: Z/X recipe, C craft, E gather, SPACE sail', {
+    this.keyboardHintText = this.trackUi(this.add.text(10, GAME_HEIGHT - 18, 'Keys: Z/X recipe, C craft, E interact, SPACE sail, M sound', {
       fontFamily: 'monospace',
       fontSize: '10px',
       color: '#c9dfff',
@@ -1190,12 +1256,15 @@ class AdventureScene extends Phaser.Scene {
       this.inventory.wood += 1
       this.inventory.stone += 1
       this.setStatus(`${nearby.def.title}: found supplies (+1 wood, +1 stone).`)
+      this.playSfx([330, 392], 0.05, 0.07, 'square')
     } else if (nearby.def.type === 'shrine') {
       this.inventory.fiber += 2
       this.setStatus(`${nearby.def.title}: blessing granted (+2 fiber).`)
+      this.playSfx([523, 659], 0.05, 0.08, 'sine')
     } else {
       this.inventory.stone += 2
       this.setStatus(`${nearby.def.title}: mined glowing ore (+2 stone).`)
+      this.playSfx([196, 220], 0.05, 0.08, 'triangle')
     }
 
     if (this.quest.lanternRequested && !this.quest.lanternDelivered && this.questRelicKeys.includes(nearby.key)) {
@@ -1237,6 +1306,7 @@ class AdventureScene extends Phaser.Scene {
         this.crafted.raftKit += 1
         this.quest.lanternDelivered = true
         this.setStatus(`${npcName}: Perfect! Reward: +3 fiber and +1 Raft Kit. Quest complete.`)
+        this.playSfx([392, 523, 659, 784], 0.055, 0.09, 'triangle')
         this.updateHud()
         this.saveNow()
         return true
@@ -1277,6 +1347,7 @@ class AdventureScene extends Phaser.Scene {
     })
 
     this.setStatus(`Collected ${node.type}.`)
+    this.playSfx([440, 660], 0.045, 0.06, 'square')
     this.updateHud()
     this.saveNow()
   }
@@ -1300,6 +1371,7 @@ class AdventureScene extends Phaser.Scene {
     this.crafted[recipe.key] += 1
 
     this.setStatus(`Crafted ${recipe.label}!`)
+    this.playSfx([392, 523, 659], 0.05, 0.07, 'triangle')
     this.updateHud()
     this.saveNow()
   }
@@ -1327,13 +1399,15 @@ class AdventureScene extends Phaser.Scene {
       `bug lantern: ${this.crafted.bugLantern}`,
     ])
 
-    this.recipeText.setText(this.recipes.map((r, i) => {
+    const recipeLines = this.recipes.map((r, i) => {
       const marker = i === this.selectedRecipe ? '>' : ' '
       const cost = Object.entries(r.cost)
         .map(([k, v]) => `${v}${k[0]}`)
         .join(' + ')
       return `${marker} ${r.label} (${cost})`
-    }))
+    })
+    recipeLines.push(`SFX [M]: ${this.sfxEnabled ? 'on' : 'off'}`)
+    this.recipeText.setText(recipeLines)
   }
 
   private startWaterAnimation() {
@@ -1365,6 +1439,7 @@ class AdventureScene extends Phaser.Scene {
         selectedRecipe: this.selectedRecipe,
         quest: { ...this.quest },
         landmarksVisited: Object.keys(this.landmarksVisited).length,
+        sfxEnabled: this.sfxEnabled,
         cameraZoom: this.cameras.main.zoom,
         fps: Math.round(this.game.loop.actualFps),
       }),
@@ -1406,6 +1481,10 @@ class AdventureScene extends Phaser.Scene {
         })
       }
 
+      if (typeof parsed.sfxEnabled === 'boolean') {
+        this.sfxEnabled = parsed.sfxEnabled
+      }
+
       if (typeof parsed.cameraZoom === 'number') {
         this.cameras.main.setZoom(Phaser.Math.Clamp(parsed.cameraZoom, 0.75, 2.25))
       }
@@ -1424,6 +1503,7 @@ class AdventureScene extends Phaser.Scene {
       selectedRecipe: this.selectedRecipe,
       quest: { ...this.quest },
       landmarksVisited: { ...this.landmarksVisited },
+      sfxEnabled: this.sfxEnabled,
       cameraZoom: this.cameras.main.zoom,
     }
 
