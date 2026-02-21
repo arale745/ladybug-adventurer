@@ -1105,17 +1105,19 @@ class AdventureScene extends Phaser.Scene {
     const now = this.time.now
     const pursuitSpeed = 45
     const telegraphDist = 38
-    const turnSpeed = 0.08
+    const turnSpeed = 0.12
     const wanderSpeed = 25
+    const pursuitTurnSpeed = 0.15
 
     this.encounters.forEach((encounter) => {
       const { sprite } = encounter
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, sprite.x, sprite.y)
 
-      // Telegraph phase: bright red tint when player is close
+      // Telegraph phase: bright red tint with pulse when player is close
       if (dist < telegraphDist && now >= encounter.telegraphUntil && now >= this.encounterCooldownUntil) {
         encounter.telegraphUntil = now + 360
-        sprite.setTint(0xff7f7f)
+        const pulse = 0.5 + 0.5 * Math.sin(now * 0.03) // 1 second pulse
+        sprite.setTint(0xff7f7f * pulse)
         this.playSfx([280], 0.028, 0.05, 'square')
       } else if (now >= encounter.telegraphUntil) {
         sprite.clearTint()
@@ -1124,21 +1126,36 @@ class AdventureScene extends Phaser.Scene {
       // AI movement: pursue or wander based on distance
       let targetAngle: number
       if (now < encounter.telegraphUntil || now < this.encounterCooldownUntil) {
-        // Wander when telegraphing or on cooldown
-        targetAngle = encounter.angle + (Math.random() - 0.5) * 0.8
-      } else if (dist > 10) {
-        // Actively pursue player when ready to attack
-        targetAngle = Phaser.Math.Angle.Between(sprite.x, sprite.y, this.player.x, this.player.y)
+        // Wander when telegraphing or on cooldown - smooth wandering (interpolated)
+        const wanderVariation = 0.5
+        const targetWanderAngle = encounter.angle + (Math.random() - 0.5) * wanderVariation
+        let wanderDiff = targetWanderAngle - encounter.angle
+        while (wanderDiff > Math.PI) wanderDiff -= Math.PI * 2
+        while (wanderDiff < -Math.PI) wanderDiff += Math.PI * 2
+        encounter.angle += Phaser.Math.Clamp(wanderDiff, -turnSpeed, turnSpeed)
+        targetAngle = encounter.angle
+      } else if (dist > 15) {
+        // Actively pursue player with curved arc
+        const curveStrength = 0.4
+        const baseAngle = Phaser.Math.Angle.Between(sprite.x, sprite.y, this.player.x, this.player.y)
+        const curveOffset = (Math.random() - 0.5) * curveStrength * (dist / 50)
+        targetAngle = baseAngle + curveOffset
       } else {
-        // Too close, just wander slowly
-        targetAngle = encounter.angle + (Math.random() - 0.5) * 0.5
+        // Too close, wander slowly with minimal jitter
+        const targetWanderAngle = encounter.angle + (Math.random() - 0.5) * 0.3
+        let wanderDiff = targetWanderAngle - encounter.angle
+        while (wanderDiff > Math.PI) wanderDiff -= Math.PI * 2
+        while (wanderDiff < -Math.PI) wanderDiff += Math.PI * 2
+        encounter.angle += Phaser.Math.Clamp(wanderDiff, -turnSpeed * 0.5, turnSpeed * 0.5)
+        targetAngle = encounter.angle
       }
 
-      // Smooth turning (angular velocity cap)
+      // Smooth turning with stronger pursuit turn speed
       let angleDiff = targetAngle - encounter.angle
       while (angleDiff > Math.PI) angleDiff -= Math.PI * 2
       while (angleDiff < -Math.PI) angleDiff += Math.PI * 2
-      encounter.angle += Phaser.Math.Clamp(angleDiff, -turnSpeed, turnSpeed)
+      const turnLimit = dist > 15 ? pursuitTurnSpeed : turnSpeed
+      encounter.angle += Phaser.Math.Clamp(angleDiff, -turnLimit, turnLimit)
 
       // Calculate velocity
       let speed = wanderSpeed
