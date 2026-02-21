@@ -117,7 +117,6 @@ class AdventureScene extends Phaser.Scene {
   private currentHP = 3
   private damageFlashTime = 0
   private damageFlashColor = 0xffffff
-  private damageNumberSprite?: Phaser.Physics.Arcade.Sprite
 
   private dock!: Phaser.GameObjects.Rectangle
   private craftBench!: Phaser.GameObjects.Rectangle
@@ -422,29 +421,21 @@ class AdventureScene extends Phaser.Scene {
     const x = this.player.x
     const y = this.player.y - 30
 
-    this.damageNumberSprite = this.trackWorld(
-      this.physics.add.sprite(x, y, '')
-    )
-    this.damageNumberSprite.setDepth(25)
-    this.damageNumberSprite.setTint(0xff0000)
-
-    const text = this.add.text(x, y, `-${amount}`, {
+    const text = this.trackWorld(this.add.text(x, y, `-${amount}`, {
       fontFamily: 'monospace',
       fontSize: '14px',
       color: '#ffcccc',
       backgroundColor: '#000000',
       padding: { left: 3, right: 3, top: 1, bottom: 1 },
-    }).setDepth(26).setOrigin(0.5)
+    }).setDepth(26).setOrigin(0.5))
 
     this.tweens.add({
-      targets: [this.damageNumberSprite, text],
-      y: '-=60',
-      duration: 400,
+      targets: text,
+      y: '-=24',
+      alpha: 0,
+      duration: 420,
       ease: 'Quad.easeOut',
-      onComplete: () => {
-        this.damageNumberSprite?.destroy()
-        text.destroy()
-      }
+      onComplete: () => text.destroy(),
     })
   }
 
@@ -1161,8 +1152,15 @@ class AdventureScene extends Phaser.Scene {
 
       // Check collision with player
       const collisionDist = Phaser.Math.Distance.Between(this.player.x, this.player.y, sprite.x, sprite.y)
-      if (collisionDist < 14 && now < this.dodgeUntil) {
-        // Player dodged, give bonus
+      if (collisionDist >= 14) return
+
+      // Skip further collision processing if on cooldown
+      if (now < this.encounterCooldownUntil) return
+
+      this.encounterCooldownUntil = now + 1800
+
+      if (now < this.dodgeUntil) {
+        // Player dodged, give bonus once per encounter cooldown window
         this.inventory.fiber += 1
         this.setStatus('Perfect dodge! +1 fiber.')
         this.playSfx([660, 880], 0.05, 0.07, 'triangle')
@@ -1170,11 +1168,6 @@ class AdventureScene extends Phaser.Scene {
         this.saveNow()
         return
       }
-
-      // Skip further collision processing if on cooldown
-      if (now < this.encounterCooldownUntil) return
-
-      this.encounterCooldownUntil = now + 1800
 
       // Hit case: reduce HP and apply slow effect
       this.takeDamage(1)
@@ -1530,23 +1523,36 @@ class AdventureScene extends Phaser.Scene {
       // Show dodge aura during invulnerability (bright, fast pulse)
       this.dodgeAura.setVisible(now < this.dodgeUntil)
       if (now < this.dodgeUntil) {
-        // Very fast, bright pulse during invulnerability
-        const pulse = 0.35 + 0.25 * Math.sin(now / 60)
+        // Intense bright pulse during invulnerability - more obvious
+        const pulse = 0.4 + 0.3 * Math.sin(now / 55)
         this.dodgeAura.setAlpha(pulse)
-        this.dodgeAura.setStrokeStyle(4, 0xb879ff, Math.min(1, pulse + 0.3))
+        this.dodgeAura.setStrokeStyle(6, 0xc48aff, Math.min(1, pulse + 0.35))
+        // Pulse color from bright purple to white
+        const r = 196 + Math.floor((pulse - 0.4) * 100)
+        const g = 138 + Math.floor((pulse - 0.4) * 100)
+        const b = 255
+        this.dodgeAura.setFillStyle((r << 16) | (g << 8) | b, pulse * 0.6)
       }
 
-      // Show dodge indicator when on cooldown
+      // Show dodge indicator when on cooldown - more obvious pulse
       if (now >= this.dodgeCooldownUntil) {
         this.dodgeIndicator.setVisible(false)
       } else {
         this.dodgeIndicator.setVisible(true)
-        // Very dramatic pulse during cooldown
-        const pulse = 0.5 + 0.4 * Math.sin(now / 90)
+        // More dramatic pulse that intensifies as cooldown progresses
+        const cooldownProgress = 1 - (this.dodgeCooldownUntil - now) / 2200
+        const pulse = 0.6 + 0.4 * Math.sin(now / 75)
         this.dodgeIndicator.setAlpha(pulse)
-        // Bright red glow when on cooldown (thicker, more obvious)
-        this.dodgeIndicator.setStrokeStyle(5, 0xff4757, 1.0)
-        this.dodgeIndicator.setFillStyle(0xff6b6b, pulse * 0.7)
+
+        // Stronger, more obvious red glow during cooldown
+        this.dodgeIndicator.setStrokeStyle(7, 0xff4757, 1.0)
+        this.dodgeIndicator.setFillStyle(0xff4757, pulse * 0.75)
+
+        // Growing glow as cooldown nears completion
+        if (cooldownProgress > 0.5) {
+          const extraGlow = (cooldownProgress - 0.5) * 1.5
+          this.dodgeIndicator.setStrokeStyle(7, 0xff6b7c, 0.5 + extraGlow * 0.5)
+        }
       }
     }
   }
