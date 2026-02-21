@@ -433,17 +433,31 @@ class AdventureScene extends Phaser.Scene {
 
     const text = this.trackWorld(this.add.text(x, y, `-${amount}`, {
       fontFamily: 'monospace',
-      fontSize: '14px',
-      color: '#ffcccc',
-      backgroundColor: '#000000',
-      padding: { left: 3, right: 3, top: 1, bottom: 1 },
+      fontSize: '18px',
+      color: '#ff3333',
+      backgroundColor: '#4a0000',
+      padding: { left: 4, right: 4, top: 1, bottom: 1 },
+      stroke: '#ffcccc',
+      strokeThickness: 2,
     }).setDepth(26).setOrigin(0.5))
 
+    // Initial pop animation
+    this.tweens.add({
+      targets: text,
+      y: '-=10',
+      alpha: 1,
+      scale: 1.3,
+      duration: 100,
+      ease: 'Back.easeOut',
+    })
+
+    // Fade out and drift up
     this.tweens.add({
       targets: text,
       y: '-=24',
       alpha: 0,
-      duration: 420,
+      scale: 0.8,
+      duration: 320,
       ease: 'Quad.easeOut',
       onComplete: () => text.destroy(),
     })
