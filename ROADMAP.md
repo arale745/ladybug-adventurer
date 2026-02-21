@@ -4,11 +4,11 @@
 Keep shipping small, safe, production-ready improvements in a continuous loop without burning rate limits.
 
 ## Delivery Cadence
-- 1 scoped improvement cycle every 4 hours
+- 1 scoped improvement cycle every 30 minutes
 - Each cycle must stay narrow: one gameplay/system/UI improvement max
 - Mandatory validation per cycle:
   - `npm run build`
-  - fresh screenshots:
+  - browser verification + screenshots using the **agent-browser skill/CLI** (default)
     - `qa-screens/desktop-overview.png`
     - `qa-screens/mobile-portrait.png`
   - commit + push to `main`
@@ -19,22 +19,23 @@ Keep shipping small, safe, production-ready improvements in a continuous loop wi
 ### P0 — Core feel
 1. Improve dodge readability (clear cooldown pulse + short invuln VFX)
 2. Beetle AI polish (turn speed cap, less jitter, better pursuit arcs)
-3. Better hit feedback (screen shake/light flash + stronger status messaging)
+3. Add healthbar + damage state loop (clear survive/fail feedback)
+4. Better hit feedback (screen shake/light flash + stronger status messaging)
 
 ### P1 — Progression loop
-4. Add risk/reward drops from beetles (chance for bonus material on clean dodge)
-5. Expand recipes (2-3 new craftables with meaningful utility)
-6. Add quest chapter 2 after relic completion
+5. Add risk/reward drops from beetles (chance for bonus material on clean dodge)
+6. Expand recipes (2-3 new craftables with meaningful utility)
+7. Add quest chapter 2 after relic completion
 
 ### P2 — World depth
-7. Add one unique island event per island (timed encounter, mini puzzle, hidden cache)
-8. Add mini-map / directional hints
-9. Add run summary panel (materials gained, encounters dodged, quest progress)
+8. Add one unique island event per island (timed encounter, mini puzzle, hidden cache)
+9. Add mini-map / directional hints
+10. Add run summary panel (materials gained, encounters dodged, quest progress)
 
 ### P3 — Performance and polish
-10. Mobile control tuning for portrait thumb reach
-11. HUD readability pass for small screens
-12. Reduce bundle size (lazy-load non-critical systems)
+11. Mobile control tuning for portrait thumb reach
+12. HUD readability pass for small screens
+13. Reduce bundle size (lazy-load non-critical systems)
 
 ## Hard Constraints
 - Never break deployability
