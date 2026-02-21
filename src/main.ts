@@ -86,8 +86,11 @@ const MAP_PIXEL_HEIGHT = TILE * MAP_H
 
 const VIEW_WIDTH = typeof window !== 'undefined' ? window.innerWidth : 1280
 const VIEW_HEIGHT = typeof window !== 'undefined' ? window.innerHeight : 720
+const IS_PORTRAIT_VIEW = VIEW_HEIGHT > VIEW_WIDTH
 const GAME_WIDTH = MAP_PIXEL_WIDTH
-const GAME_HEIGHT = Math.max(MAP_PIXEL_HEIGHT, Math.min(1800, Math.round((GAME_WIDTH * VIEW_HEIGHT) / Math.max(1, VIEW_WIDTH))))
+const GAME_HEIGHT = IS_PORTRAIT_VIEW
+  ? MAP_PIXEL_HEIGHT + 220
+  : Math.max(MAP_PIXEL_HEIGHT, Math.min(900, Math.round((GAME_WIDTH * VIEW_HEIGHT) / Math.max(1, VIEW_WIDTH))))
 const WORLD_OFFSET_Y = Math.floor((GAME_HEIGHT - MAP_PIXEL_HEIGHT) / 2)
 
 class AdventureScene extends Phaser.Scene {
@@ -147,6 +150,7 @@ class AdventureScene extends Phaser.Scene {
   private hudExpanded = true
   private fpsTick = 0
   private sfxEnabled = true
+  private hasSavedZoom = false
   private audioCtx?: AudioContext
   private audioUnlocked = false
 
@@ -301,6 +305,8 @@ class AdventureScene extends Phaser.Scene {
     this.createPlayer()
     this.createHotspots()
     this.physics.world.setBounds(0, WORLD_OFFSET_Y, MAP_PIXEL_WIDTH, MAP_PIXEL_HEIGHT)
+    // Keep camera bounds full-height so portrait mobile doesn't show giant top/bottom letterbox bands.
+    this.cameras.main.setBounds(0, 0, MAP_PIXEL_WIDTH, GAME_HEIGHT)
     this.setupInput()
     this.createHud()
     this.createMobileControls()
@@ -967,12 +973,12 @@ class AdventureScene extends Phaser.Scene {
     const compact = this.mobileControlsEnabled || this.scale.parentSize.width < 900
     const portrait = this.scale.parentSize.height > this.scale.parentSize.width
 
-    if (portrait && this.mobileControlsEnabled) {
+    if (portrait) {
       this.hudToggleButton.setVisible(true).setPosition(GAME_WIDTH - 28, 16)
       this.hudToggleText.setVisible(true).setPosition(GAME_WIDTH - 28, 16).setText(this.hudExpanded ? 'X' : 'INV')
 
       this.islandLabel.setFontSize(13).setPosition(8, 8)
-      this.statusText.setPosition(8, 26).setFontSize(10).setWordWrapWidth(GAME_WIDTH - (this.hudExpanded ? 206 : 16))
+      this.statusText.setPosition(8, GAME_HEIGHT - 92).setFontSize(10).setWordWrapWidth(GAME_WIDTH - (this.hudExpanded ? 206 : 16))
       this.keyboardHintText.setVisible(false)
 
       if (this.hudExpanded) {
@@ -1352,6 +1358,16 @@ class AdventureScene extends Phaser.Scene {
 
     this.player.setPosition(10 * TILE + HALF_TILE, WORLD_OFFSET_Y + 6 * TILE + HALF_TILE)
     this.playerShadow?.setPosition(this.player.x, this.player.y + 10)
+
+    const portrait = this.scale.parentSize.height > this.scale.parentSize.width
+    if (!this.hasSavedZoom) {
+      this.cameras.main.setZoom(portrait ? 1.6 : 1)
+    } else if (portrait && this.cameras.main.zoom < 1.5) {
+      // Prevent old saved zoom values from making mobile view too tiny.
+      this.cameras.main.setZoom(1.5)
+    }
+    this.cameras.main.startFollow(this.player, true, 0.12, 0.12)
+
     this.updateHud()
   }
 
@@ -1832,6 +1848,7 @@ class AdventureScene extends Phaser.Scene {
 
       if (typeof parsed.cameraZoom === 'number') {
         this.cameras.main.setZoom(Phaser.Math.Clamp(parsed.cameraZoom, 0.75, 2.25))
+        this.hasSavedZoom = true
       }
     } catch {
       // ignore corrupted save
