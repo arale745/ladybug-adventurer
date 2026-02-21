@@ -408,8 +408,12 @@ class AdventureScene extends Phaser.Scene {
     if (this.currentHP <= 0) return
 
     this.currentHP -= amount
-    this.damageFlashTime = this.time.now + 150
-    this.damageFlashColor = 0xff0000
+    this.damageFlashTime = this.time.now + 120
+    this.damageFlashColor = 0xff3333
+
+    // Screen shake: stronger for beetle encounter
+    const shakeIntensity = 8
+    this.cameras.main.shake(200, shakeIntensity / 100)
 
     if (this.currentHP <= 0) {
       this.currentHP = this.maxHP
@@ -1185,7 +1189,7 @@ class AdventureScene extends Phaser.Scene {
       if (now < this.dodgeUntil) {
         // Player dodged, give bonus once per encounter cooldown window
         this.inventory.fiber += 1
-        this.setStatus('Perfect dodge! +1 fiber.')
+        this.setStatus('⚡ PERFECT DODGE! +1 fiber!')
         this.playSfx([660, 880], 0.05, 0.07, 'triangle')
         this.updateHud()
         this.saveNow()
@@ -1201,12 +1205,12 @@ class AdventureScene extends Phaser.Scene {
         if (lootable.length > 0) {
           const stolen = Phaser.Utils.Array.GetRandom(lootable)
           this.inventory[stolen] = Math.max(0, this.inventory[stolen] - 1)
-          this.setStatus(`A beetle rammed you! -1 ${stolen}, HP-${1} and slowed for 2.5s.`)
+          this.setStatus(`⚠️ CRASH! -1 ${stolen}, HP-1, slowed 2.5s!`)
         } else {
-          this.setStatus('A beetle rammed you! HP-1, slowed for 2.5s.')
+          this.setStatus('⚠️ CRASH! HP-1, slowed 2.5s!')
         }
       } else {
-        this.setStatus('Wounded! The island heals you to full.')
+        this.setStatus('💔 Wounded! Island heals you to full HP.')
       }
 
       this.playSfx([185, 165], 0.05, 0.11, 'sawtooth')
