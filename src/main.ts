@@ -113,6 +113,12 @@ class AdventureScene extends Phaser.Scene {
   private readonly landmarksVisited: Record<string, boolean> = {}
   private readonly saveKey = 'ladybug-adventurer-save-v1'
 
+  private maxHP = 3
+  private currentHP = 3
+  private damageFlashTime = 0
+  private damageFlashColor = 0xffffff
+  private damageNumberSprite?: Phaser.Physics.Arcade.Sprite
+
   private dock!: Phaser.GameObjects.Rectangle
   private craftBench!: Phaser.GameObjects.Rectangle
   private npcSprite?: Phaser.Physics.Arcade.Sprite
@@ -137,6 +143,8 @@ class AdventureScene extends Phaser.Scene {
   private hudToggleButton!: Phaser.GameObjects.Rectangle
   private hudToggleText!: Phaser.GameObjects.Text
   private fpsText!: Phaser.GameObjects.Text
+  private healthBarBg!: Phaser.GameObjects.Rectangle
+  private healthBar!: Phaser.GameObjects.Rectangle
   private hudExpanded = true
   private fpsTick = 0
   private sfxEnabled = true
@@ -340,6 +348,10 @@ class AdventureScene extends Phaser.Scene {
       this.fpsText.setColor(fps >= 58 ? '#c6f7c6' : fps >= 45 ? '#ffe39d' : '#ff8f8f')
     }
 
+    const flashing = this.time.now < this.damageFlashTime
+    if (flashing) this.player.setTint(this.damageFlashColor)
+    else this.player.clearTint()
+
     if (Phaser.Input.Keyboard.JustDown(this.interactKey) || this.consumeTouchAction('interact')) this.handleInteract()
 
     if ((Phaser.Input.Keyboard.JustDown(this.travelKey) || this.consumeTouchAction('travel')) && this.isNear(this.dock, 34)) {
@@ -385,6 +397,55 @@ class AdventureScene extends Phaser.Scene {
     this.dodgeUntil = now + 320
     this.dodgeCooldownUntil = now + 2200
     this.playSfx([740, 880], 0.05, 0.06, 'square')
+  }
+
+  private takeDamage(amount: number) {
+    if (this.currentHP <= 0) return
+
+    this.currentHP -= amount
+    this.damageFlashTime = this.time.now + 150
+    this.damageFlashColor = 0xff0000
+
+    if (this.currentHP <= 0) {
+      this.currentHP = this.maxHP
+      this.playSfx([100, 80], 0.08, 0.08, 'sawtooth')
+    } else {
+      this.playSfx([200, 180], 0.06, 0.09, 'sawtooth')
+    }
+
+    this.showDamageNumber(amount)
+    this.updateHud()
+    this.saveNow()
+  }
+
+  private showDamageNumber(amount: number) {
+    const x = this.player.x
+    const y = this.player.y - 30
+
+    this.damageNumberSprite = this.trackWorld(
+      this.physics.add.sprite(x, y, '')
+    )
+    this.damageNumberSprite.setDepth(25)
+    this.damageNumberSprite.setTint(0xff0000)
+
+    const text = this.add.text(x, y, `-${amount}`, {
+      fontFamily: 'monospace',
+      fontSize: '14px',
+      color: '#ffcccc',
+      backgroundColor: '#000000',
+      padding: { left: 3, right: 3, top: 1, bottom: 1 },
+    }).setDepth(26).setOrigin(0.5)
+
+    this.tweens.add({
+      targets: [this.damageNumberSprite, text],
+      y: '-=60',
+      duration: 400,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        this.damageNumberSprite?.destroy()
+        text.destroy()
+      }
+    })
   }
 
   private createAudioContext() {
@@ -899,6 +960,9 @@ class AdventureScene extends Phaser.Scene {
       color: '#d8ecff',
     }).setOrigin(0.5).setDepth(104))
 
+    this.healthBarBg = this.trackUi(this.add.rectangle(GAME_WIDTH - 120, 146, 230, 18, 0x1a1a1a, 0.9).setDepth(105))
+    this.healthBar = this.trackUi(this.add.rectangle(GAME_WIDTH - 120, 146, 230, 18, 0x4ade80, 0.9).setDepth(106))
+
     this.fpsText = this.trackUi(this.add.text(GAME_WIDTH - 8, GAME_HEIGHT - 8, 'FPS: --', {
       fontFamily: 'monospace',
       fontSize: '10px',
@@ -925,11 +989,15 @@ class AdventureScene extends Phaser.Scene {
         this.materialText.setVisible(true).setPosition(GAME_WIDTH - 176, 26).setFontSize(11)
         this.craftedText.setVisible(true).setPosition(GAME_WIDTH - 176, 72).setFontSize(11)
         this.recipeText.setVisible(true).setPosition(GAME_WIDTH - 176, 116).setFontSize(11)
+        this.healthBarBg.setVisible(true).setPosition(GAME_WIDTH - 94, 152).setSize(176, 12)
+        this.healthBar.setVisible(true).setPosition(GAME_WIDTH - 182, 152).setSize(172, 10)
       } else {
         this.hudPanel.setVisible(false)
         this.materialText.setVisible(false)
         this.craftedText.setVisible(false)
         this.recipeText.setVisible(false)
+        this.healthBarBg.setVisible(false)
+        this.healthBar.setVisible(false)
       }
       this.fpsText.setPosition(GAME_WIDTH - 8, GAME_HEIGHT - 8)
       return
@@ -949,6 +1017,8 @@ class AdventureScene extends Phaser.Scene {
       this.materialText.setPosition(GAME_WIDTH - 182, 18).setFontSize(11)
       this.craftedText.setPosition(GAME_WIDTH - 182, 63).setFontSize(11)
       this.recipeText.setPosition(GAME_WIDTH - 182, 104).setFontSize(11)
+      this.healthBarBg.setVisible(true).setPosition(GAME_WIDTH - 96, 142).setSize(178, 12)
+      this.healthBar.setVisible(true).setPosition(GAME_WIDTH - 183, 142).setSize(174, 10)
       this.statusText.setPosition(8, GAME_HEIGHT - 56).setFontSize(10).setWordWrapWidth(GAME_WIDTH - 16)
       this.keyboardHintText.setVisible(!this.mobileControlsEnabled)
       this.keyboardHintText.setPosition(8, GAME_HEIGHT - 18).setFontSize(9)
@@ -958,6 +1028,8 @@ class AdventureScene extends Phaser.Scene {
       this.materialText.setPosition(GAME_WIDTH - 224, 22).setFontSize(12)
       this.craftedText.setPosition(GAME_WIDTH - 224, 76).setFontSize(12)
       this.recipeText.setPosition(GAME_WIDTH - 224, 126).setFontSize(12)
+      this.healthBarBg.setVisible(true).setPosition(GAME_WIDTH - 120, 154).setSize(220, 14)
+      this.healthBar.setVisible(true).setPosition(GAME_WIDTH - 229, 154).setSize(216, 12)
       this.statusText.setPosition(10, GAME_HEIGHT - 40).setFontSize(11).setWordWrapWidth(GAME_WIDTH - 20)
       this.keyboardHintText.setVisible(true)
       this.keyboardHintText.setPosition(10, GAME_HEIGHT - 18).setFontSize(10)
@@ -1104,15 +1176,21 @@ class AdventureScene extends Phaser.Scene {
 
       this.encounterCooldownUntil = now + 1800
 
-      // Hit case: slow down player
+      // Hit case: reduce HP and apply slow effect
+      this.takeDamage(1)
       this.slowUntil = now + 2600
-      const lootable = (Object.keys(this.inventory) as ResourceType[]).filter((k) => this.inventory[k] > 0)
-      if (lootable.length > 0) {
-        const stolen = Phaser.Utils.Array.GetRandom(lootable)
-        this.inventory[stolen] = Math.max(0, this.inventory[stolen] - 1)
-        this.setStatus(`A beetle rammed you! -1 ${stolen} and slowed for 2.5s.`)
+
+      if (this.currentHP > 0) {
+        const lootable = (Object.keys(this.inventory) as ResourceType[]).filter((k) => this.inventory[k] > 0)
+        if (lootable.length > 0) {
+          const stolen = Phaser.Utils.Array.GetRandom(lootable)
+          this.inventory[stolen] = Math.max(0, this.inventory[stolen] - 1)
+          this.setStatus(`A beetle rammed you! -1 ${stolen}, HP-${1} and slowed for 2.5s.`)
+        } else {
+          this.setStatus('A beetle rammed you! HP-1, slowed for 2.5s.')
+        }
       } else {
-        this.setStatus('A beetle rammed you! Slowed for 2.5s.')
+        this.setStatus('Wounded! The island heals you to full.')
       }
 
       this.playSfx([185, 165], 0.05, 0.11, 'sawtooth')
@@ -1657,8 +1735,18 @@ class AdventureScene extends Phaser.Scene {
     })
     const dodgeReady = this.time.now >= this.dodgeCooldownUntil
     recipeLines.push(`Dodge [F]: ${dodgeReady ? 'ready' : 'cooldown'}`)
+    recipeLines.push(`HP: ${this.currentHP}/${this.maxHP}`)
     recipeLines.push(`SFX [M]: ${this.sfxEnabled ? 'on' : 'off'}`)
     this.recipeText.setText(recipeLines)
+
+    const hpRatio = Phaser.Math.Clamp(this.currentHP / this.maxHP, 0, 1)
+    const hpWidth = (this.healthBarBg.width - 4) * hpRatio
+    this.healthBar.setSize(Math.max(2, hpWidth), this.healthBar.height)
+    this.healthBar.setOrigin(0, 0.5)
+    this.healthBar.setPosition(this.healthBarBg.x - this.healthBarBg.width / 2 + 2, this.healthBarBg.y)
+
+    const hpColor = hpRatio > 0.66 ? 0x4ade80 : hpRatio > 0.33 ? 0xf59e0b : 0xef4444
+    this.healthBar.setFillStyle(hpColor, 0.95)
   }
 
   private startWaterAnimation() {
