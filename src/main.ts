@@ -120,6 +120,9 @@ class AdventureScene extends Phaser.Scene {
   private currentHP = 3
   private damageFlashTime = 0
   private damageFlashColor = 0xffffff
+  private deathOverlay: Phaser.GameObjects.Rectangle | undefined
+  private deathText: Phaser.GameObjects.Text | undefined
+  private isDead = false
 
   private dock!: Phaser.GameObjects.Rectangle
   private craftBench!: Phaser.GameObjects.Rectangle
@@ -416,8 +419,7 @@ class AdventureScene extends Phaser.Scene {
     this.cameras.main.shake(200, shakeIntensity / 100)
 
     if (this.currentHP <= 0) {
-      this.currentHP = this.maxHP
-      this.playSfx([100, 80], 0.08, 0.08, 'sawtooth')
+      this.triggerDeath()
     } else {
       this.playSfx([200, 180], 0.06, 0.09, 'sawtooth')
     }
@@ -425,6 +427,76 @@ class AdventureScene extends Phaser.Scene {
     this.showDamageNumber(amount)
     this.updateHud()
     this.saveNow()
+  }
+
+  private triggerDeath() {
+    this.isDead = true
+    this.currentHP = this.maxHP
+
+    // Dramatic death feedback
+    // Massive screen shake
+    this.cameras.main.shake(1000, 0.3)
+
+    // Flash screen white
+    const overlay = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0xffffff, 0.9).setDepth(200)
+    this.tweens.add({
+      targets: overlay,
+      alpha: 0,
+      duration: 1500,
+      ease: 'Quad.easeIn',
+      onComplete: () => overlay.destroy(),
+    })
+
+    // Show death text
+    this.deathOverlay = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.7).setDepth(150)
+    this.deathOverlay!.setScrollFactor(0)
+
+    this.deathText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 30, '💀', {
+      fontFamily: 'monospace',
+      fontSize: '80px',
+      color: '#ff0000',
+      stroke: '#ffffff',
+      strokeThickness: 6,
+    }).setOrigin(0.5).setDepth(160)
+
+    const subText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 30, 'Wounded!\nIsland heals you.', {
+      fontFamily: 'monospace',
+      fontSize: '16px',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
+      align: 'center',
+      wordWrap: { width: GAME_WIDTH - 100 },
+    }).setOrigin(0.5).setDepth(160)
+
+    // Death text pop animation
+    this.tweens.add({
+      targets: [this.deathText!, subText],
+      alpha: 1,
+      scale: 0.5,
+      duration: 100,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        // Wait then fade out
+        this.time.delayedCall(1800, () => {
+          this.tweens.add({
+            targets: [this.deathOverlay!, this.deathText!, subText],
+            alpha: 0,
+            duration: 500,
+            ease: 'Quad.easeIn',
+            onComplete: () => {
+              this.deathOverlay?.destroy()
+              this.deathText?.destroy()
+              subText.destroy()
+              this.isDead = false
+            },
+          })
+        })
+      },
+    })
+
+    this.playSfx([100, 80], 0.08, 0.08, 'sawtooth')
+    this.setStatus('💔 Wounded! Island heals you to full HP.')
   }
 
   private showDamageNumber(amount: number) {
@@ -1535,6 +1607,8 @@ class AdventureScene extends Phaser.Scene {
 
   private movePlayer() {
     const now = this.time.now
+    if (this.isDead) return
+
     const speed = now < this.dodgeUntil ? 214 : now < this.slowUntil ? 92 : 132
     let vx = 0
     let vy = 0
