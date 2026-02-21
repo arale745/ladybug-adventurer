@@ -677,13 +677,13 @@ class AdventureScene extends Phaser.Scene {
     this.dodgeIndicator = this.trackWorld(
       this.add.circle(0, 0, 30, 0x4a7f3d, 0.35)
         .setDepth(17)
-        .setStrokeStyle(3, 0x6fbf66, 0.7)
+        .setStrokeStyle(5, 0x6fbf66, 0.9)
     )
     this.dodgeIndicator.setVisible(false)
 
     // Dodge aura (invulnerability effect)
     this.dodgeAura = this.trackWorld(
-      this.add.circle(0, 0, 26, 0x7f3db8, 0.25)
+      this.add.circle(0, 0, 26, 0x7f3db8, 0.35)
         .setDepth(16)
     )
     this.dodgeAura.setVisible(false)
@@ -1449,12 +1449,13 @@ class AdventureScene extends Phaser.Scene {
       this.dodgeIndicator.setPosition(this.player.x, this.player.y)
       this.dodgeAura.setPosition(this.player.x, this.player.y)
 
-      // Show dodge aura during invulnerability (brighter, faster pulse)
+      // Show dodge aura during invulnerability (bright, fast pulse)
       this.dodgeAura.setVisible(now < this.dodgeUntil)
       if (now < this.dodgeUntil) {
-        // Fast, bright pulse during invulnerability
-        const pulse = 0.25 + 0.2 * Math.sin(now / 80)
+        // Very fast, bright pulse during invulnerability
+        const pulse = 0.35 + 0.25 * Math.sin(now / 60)
         this.dodgeAura.setAlpha(pulse)
+        this.dodgeAura.setStrokeStyle(4, 0xb879ff, Math.min(1, pulse + 0.3))
       }
 
       // Show dodge indicator when on cooldown
@@ -1462,12 +1463,12 @@ class AdventureScene extends Phaser.Scene {
         this.dodgeIndicator.setVisible(false)
       } else {
         this.dodgeIndicator.setVisible(true)
-        // More dramatic pulse during cooldown
-        const pulse = 0.4 + 0.3 * Math.sin(now / 120)
+        // Very dramatic pulse during cooldown
+        const pulse = 0.5 + 0.4 * Math.sin(now / 90)
         this.dodgeIndicator.setAlpha(pulse)
-        // Bright red glow when on cooldown
-        this.dodgeIndicator.setStrokeStyle(3, 0xff6b6b, 1.0)
-        this.dodgeIndicator.setFillStyle(0xff4757, pulse * 0.6)
+        // Bright red glow when on cooldown (thicker, more obvious)
+        this.dodgeIndicator.setStrokeStyle(5, 0xff4757, 1.0)
+        this.dodgeIndicator.setFillStyle(0xff6b6b, pulse * 0.7)
       }
     }
   }
