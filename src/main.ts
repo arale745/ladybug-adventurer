@@ -1557,76 +1557,77 @@ class AdventureScene extends Phaser.Scene {
       this.dodgeIndicator.setPosition(this.player.x, this.player.y)
       this.dodgeAura.setPosition(this.player.x, this.player.y)
 
-      // Show dodge aura during invulnerability (bright, fast pulse)
+      // Show dodge aura during invulnerability - MAXIMUM VISIBILITY
       const isInDodge = now < this.dodgeUntil
       this.dodgeAura.setVisible(isInDodge)
       if (isInDodge) {
-        // Enhanced pulse - larger radius and brighter colors for maximum visibility
-        const pulse = 0.5 + 0.4 * Math.sin(now / 55)
-        const pulse2 = 0.6 + 0.3 * Math.sin(now / 45)  // Secondary pulse for extra drama
+        // Enhanced pulse - FAST and DRAMATIC for instant recognition
+        const pulse = 0.5 + 0.45 * Math.sin(now / 45)
+        const pulse2 = 0.7 + 0.35 * Math.sin(now / 35)  // Faster, more intense pulses
 
-        // Brighter stroke with intense glow
+        // MAXIMUM opacity for visibility
         this.dodgeAura.setAlpha(Math.max(pulse, pulse2))
-        this.dodgeAura.setStrokeStyle(8, 0xc48aff, Math.min(1, (pulse + pulse2) * 0.5))
 
-        // Flash white at peak pulses
-        const whiteFlash = pulse > 0.85 ? pulse - 0.85 : 0
-        const whiteFlash2 = pulse2 > 0.85 ? pulse2 - 0.85 : 0
+        // THICKER, MORE OBVIOUS STROKE
+        this.dodgeAura.setStrokeStyle(12, 0xc48aff, Math.min(1, (pulse + pulse2) * 0.6))
+
+        // FLASH WHITE at peak pulses for "SHIELD ACTIVE" feel
+        const whiteFlash = pulse > 0.88 ? pulse - 0.88 : 0
+        const whiteFlash2 = pulse2 > 0.88 ? pulse2 - 0.88 : 0
         const maxWhite = Math.max(whiteFlash, whiteFlash2)
 
-        // Color: bright purple with white hot center
-        const r = 196 + Math.floor((pulse + pulse2) * 50)
-        const g = 138 + Math.floor((pulse + pulse2) * 30)
+        // INTENSE COLOR: Very bright purple with white hot center
+        const r = 196 + Math.floor((pulse + pulse2) * 65)
+        const g = 138 + Math.floor((pulse + pulse2) * 40)
         const b = 255
-        this.dodgeAura.setFillStyle((r << 16) | (g << 8) | b, Math.min(1, (pulse + pulse2) * 0.5 + maxWhite * 0.8))
+        this.dodgeAura.setFillStyle((r << 16) | (g << 8) | b, Math.min(1, (pulse + pulse2) * 0.6 + maxWhite * 0.9))
 
-        // Outer glow ring
-        if (maxWhite > 0) {
-          this.dodgeAura.setBlendMode(Phaser.BlendModes.ADD)
-        } else {
-          this.dodgeAura.setBlendMode(Phaser.BlendModes.NORMAL)
-        }
+        // ADDITIVE BLEND for intense glow effect
+        this.dodgeAura.setBlendMode(Phaser.BlendModes.ADD)
+
+        // Second outer glow ring for maximum impact
+        this.dodgeAura.setStrokeStyle(18, 0xb87cff, Math.min(0.5, (pulse + pulse2) * 0.4))
       }
 
-      // Show dodge indicator when on cooldown - more obvious pulse
+      // Show dodge indicator when on cooldown - SUPER OBVIOUS PULSE
       const isInCooldown = now < this.dodgeCooldownUntil
       const isReady = now >= this.dodgeCooldownUntil
       const dodgeReadyFlashTime = this.dodgeCooldownUntil - 200  // Flash 200ms before ready
 
       if (isReady) {
         this.dodgeIndicator.setVisible(false)
-        // Flash indicator when just became ready
-        if (now < dodgeReadyFlashTime + 150) {
+        // BIGGER FLASH when just became ready
+        if (now < dodgeReadyFlashTime + 180) {
           this.dodgeIndicator.setVisible(true)
           this.dodgeIndicator.setAlpha(1)
-          this.dodgeIndicator.setStrokeStyle(8, 0x4ade80, 1.0)  // Bright green
-          this.dodgeIndicator.setFillStyle(0x4ade80, 0.9)
+          this.dodgeIndicator.setStrokeStyle(10, 0x4ade80, 1.0)  // Very bright green
+          this.dodgeIndicator.setFillStyle(0x4ade80, 1.0)
           this.dodgeIndicator.setBlendMode(Phaser.BlendModes.ADD)
         } else {
           this.dodgeIndicator.setVisible(false)
         }
       } else if (isInCooldown) {
         this.dodgeIndicator.setVisible(true)
-        // More dramatic pulse that intensifies as cooldown progresses
+        // FASTER, MORE INTENSE pulse
         const cooldownProgress = 1 - (this.dodgeCooldownUntil - now) / 2200
-        const pulse = 0.7 + 0.5 * Math.sin(now / 75)
+        const pulse = 0.8 + 0.6 * Math.sin(now / 65)
         this.dodgeIndicator.setAlpha(pulse)
 
-        // Stronger, more obvious red glow during cooldown
-        this.dodgeIndicator.setStrokeStyle(9, 0xff4757, 1.0)
-        this.dodgeIndicator.setFillStyle(0xff4757, pulse * 0.8)
+        // VERY OBVIOUS red glow
+        this.dodgeIndicator.setStrokeStyle(10, 0xff4757, 1.0)
+        this.dodgeIndicator.setFillStyle(0xff4757, pulse * 0.85)
 
-        // Growing glow as cooldown nears completion
-        if (cooldownProgress > 0.5) {
-          const extraGlow = (cooldownProgress - 0.5) * 2.0
-          const glowColor = cooldownProgress > 0.8 ? 0xff6b7c : 0xff4757
-          this.dodgeIndicator.setStrokeStyle(9, glowColor, 0.5 + extraGlow * 0.5)
+        // BRIGHT FLASH as cooldown nears completion
+        if (cooldownProgress > 0.85) {
+          const extraGlow = (cooldownProgress - 0.85) * 2.5
+          const glowColor = cooldownProgress > 0.9 ? 0xff6b7c : 0xff4757
+          this.dodgeIndicator.setStrokeStyle(10, glowColor, 0.6 + extraGlow * 0.4)
         }
 
-        // Subtle flash when cooldown is almost done
-        if (cooldownProgress > 0.9 && Math.sin(now / 100) > 0.7) {
-          this.dodgeIndicator.setAlpha(0.8)
-          this.dodgeIndicator.setStrokeStyle(9, 0xffffff, 0.7)
+        // BRIGHT FLASH when almost done
+        if (cooldownProgress > 0.92 && Math.sin(now / 95) > 0.8) {
+          this.dodgeIndicator.setAlpha(1)
+          this.dodgeIndicator.setStrokeStyle(10, 0xffffff, 0.85)
         }
       } else {
         this.dodgeIndicator.setVisible(false)
